@@ -86,7 +86,7 @@ renderBoard p1 p2 = unlines $ intersperse " "
     , renderLine 9 [Eight, Nine] p1
     , renderLine 6 [Five .. Seven] p1
     , renderLine 3 [Ace .. Four] p1
-    , unwords $ replicate 5 "\ESC[107;30m  Z  \ESC[0m"
+    , unwords $ replicate 5 "\ESC[107;34m \10048 \10048 \ESC[0m"
     , renderLine 3 [Ace .. Four] p2
     , renderLine 6 [Five .. Seven] p2
     , renderLine 9 [Eight, Nine] p2
@@ -112,7 +112,7 @@ data Move = SwapMiddle | Do [Action]
 data Action = Put | Throw | Keep
     deriving Show 
 
-type Strategy m = Player -> m Move
+type Strategy m = Player -> Pyramid -> m Move
 
 doActions :: Player -> [Action] -> Maybe (Player, [Card])
 doActions Player{..} acts = do
@@ -128,7 +128,7 @@ doActions Player{..} acts = do
 
 doRound :: Game -> Strategy IO -> Strategy IO -> IO Game
 doRound g s1 s2 = do
-  m1 <- s1 (gP1 g)
+  m1 <- s1 (gP1 g) (pPyramid $ gP2 g)
   let g2 =
         case m1 of
           SwapMiddle -> g { gMiddle = pHand $ gP1 g
@@ -139,7 +139,7 @@ doRound g s1 s2 = do
                         , gDiscard = d ++ gDiscard g
                         }
                   | otherwise -> g
-  m2 <- s2 (gP2 g)
+  m2 <- s2 (gP2 g) (pPyramid $ gP1 g)
   let g3 =
         case m2 of
           SwapMiddle -> g2 { gMiddle = pHand $ gP2 g2
@@ -188,3 +188,28 @@ gameLoop s1 s2 n g@Game{..}
 
 recordStats :: Int -> Strategy IO -> Strategy IO -> IO (Map Outcome Int)
 recordStats n s1 s2 = Map.fromListWith (+) . map (,1) <$> replicateM n (gameLoop s1 s2 100 =<< initGame)
+
+-- MANUAL PLAY -----------------------------------------------------------------
+
+play :: Strategy IO
+play p@Player{..} p2 = do
+  putStrLn $ renderBoard p2 pPyramid
+  putStrLn ""
+  putStrLn $ renderHand pHand
+  getMove
+  where
+    char2act 'k' = Just Keep
+    char2act 't' = Just Throw
+    char2act 'p' = Just Put
+    char2act _ = Nothing
+
+    getMove = do
+      putStr "Move: "
+      l <- getLine
+      case l of
+        "m" -> return SwapMiddle
+        lst | length lst == 5
+            , Just acts <- mapM char2act lst
+            , Just _ <- doActions p acts ->
+                return $ Do acts
+            | otherwise -> getMove
