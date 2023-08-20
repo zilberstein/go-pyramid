@@ -1,7 +1,5 @@
 {-# LANGUAGE RecordWildCards #-}
-module Pyramid
-  (
-  ) where
+module Pyramid where
 
 import Cards
 
@@ -102,13 +100,14 @@ type Strategy m = Player -> m Move
 doActions :: Player -> [Action] -> Maybe (Player, [Card])
 doActions Player{..} acts = do
   (h, p, d) <- go (zip pHand acts) [] pPyramid []
-  Just (Player { pHand = reverse h, pPyramid = p }, d)
+  Just (Player { pHand = h, pPyramid = p }, d)
   where
     go :: [(Card, Action)] -> [Card] -> [Card] -> [Card] -> Maybe ([Card], [Card], [Card])
     go ((c, a) : tl) h pyr d = case a of
       Put   -> (\p -> go tl h p d) =<< add c pyr
       Throw -> go tl h pyr (c : d)
       Keep  -> go tl (c : h) pyr d
+    go [] h pyr d = Just (reverse h, pyr, d)
 
 {-doRound :: Monad m => Game -> Strategy m -> Strategy m -> m Game
 doRound g s1 s2 = do
