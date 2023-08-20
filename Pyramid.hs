@@ -112,7 +112,7 @@ data Move = SwapMiddle | Do [Action]
 data Action = Put | Throw | Keep
     deriving Show 
 
-type Strategy m = Player -> Pyramid -> m Move
+type Strategy m = Player -> Pyramid -> Maybe Move -> m Move
 
 doActions :: Player -> [Action] -> Maybe (Player, [Card])
 doActions Player{..} acts = do
@@ -126,9 +126,9 @@ doActions Player{..} acts = do
       Keep  -> go tl (c : h) pyr d
     go [] h pyr d = Just (h, pyr, d)
 
-doRound :: Game -> Strategy IO -> Strategy IO -> IO Game
-doRound g s1 s2 = do
-  m1 <- s1 (gP1 g) (pPyramid $ gP2 g)
+doRound :: Maybe (Move, Move) -> Game -> Strategy IO -> Strategy IO -> IO (Move, Move, Game)
+doRound ms g s1 s2 = do
+  m1 <- s1 (gP1 g) (pPyramid $ gP2 g) (snd <$> ms)
   let g2 =
         case m1 of
           SwapMiddle -> g { gMiddle = pHand $ gP1 g
@@ -139,7 +139,7 @@ doRound g s1 s2 = do
                         , gDiscard = d ++ gDiscard g
                         }
                   | otherwise -> g
-  m2 <- s2 (gP2 g) (pPyramid $ gP1 g)
+  m2 <- s2 (gP2 g) (pPyramid $ gP1 g) (fst <$> ms)
   let g3 =
         case m2 of
           SwapMiddle -> g2 { gMiddle = pHand $ gP2 g2
@@ -161,7 +161,7 @@ doRound g s1 s2 = do
         Nothing -> do
           d <- shuffle gDiscard
           goDeal $ gm { gDeck = gDeck ++ d, gDiscard = [] }
-  goDeal g3
+  (m1,m2,) <$> goDeal g3
 
 data Outcome = P1Win | P2Win | Draw | Deadlock
   deriving (Show, Eq, Ord)
@@ -169,8 +169,8 @@ data Outcome = P1Win | P2Win | Draw | Deadlock
 hasWon :: Player -> Bool
 hasWon Player{..} = supported Ten pPyramid True
 
-gameLoop :: Strategy IO -> Strategy IO -> Int -> Game -> IO Outcome
-gameLoop s1 s2 n g@Game{..}
+gameLoop :: Strategy IO -> Strategy IO -> Int -> Maybe (Move, Move) -> Game -> IO Outcome
+gameLoop s1 s2 n ms g@Game{..}
   | n <= 0 = return Deadlock
   | otherwise = do
 --      putStrLn $ renderGame g
@@ -183,16 +183,24 @@ gameLoop s1 s2 n g@Game{..}
         return P1Win
         else if p2win then
         return P2Win
-        else 
-          gameLoop s1 s2 (n-1) =<< doRound g s1 s2
+        else do
+          (m1, m2, g') <- doRound ms g s1 s2
+          gameLoop s1 s2 (n-1) (Just (m1, m2)) g'
 
 recordStats :: Int -> Strategy IO -> Strategy IO -> IO (Map Outcome Int)
-recordStats n s1 s2 = Map.fromListWith (+) . map (,1) <$> replicateM n (gameLoop s1 s2 100 =<< initGame)
+recordStats n s1 s2 = Map.fromListWith (+) . map (,1) <$> replicateM n (gameLoop s1 s2 100 Nothing =<< initGame)
 
 -- MANUAL PLAY -----------------------------------------------------------------
 
+renderMove :: Move -> String
+renderMove SwapMiddle = "swap with middle"
+renderMove (Do acts) = unwords $ map show acts
+
 play :: Strategy IO
-play p@Player{..} p2 = do
+play p@Player{..} p2 ms = do
+  case ms of
+    Just m -> putStrLn $ "Opponent plays " ++ renderMove m
+    Nothing -> return ()
   putStrLn $ renderBoard p2 pPyramid
   putStrLn ""
   putStrLn $ renderHand pHand

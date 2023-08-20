@@ -13,7 +13,7 @@ hoard :: Monad m => Label -> Strategy m
 hoard lbl = keepIf $ \(Card l _) -> l == lbl
 
 keepIf :: Monad m => (Card -> Bool) -> Strategy m
-keepIf f Player{..} _ = return $ Do $ reverse (getActions pHand (pPyramid, []))
+keepIf f Player{..} _ _ = return $ Do $ reverse (getActions pHand (pPyramid, []))
   where
     getActions (card:cards) (pPyramid, list) = getActions cards (tryInsert card pPyramid list)
     getActions [] (pPyramid, list) = list
