@@ -9,10 +9,11 @@ import Data.List
 import Data.Maybe
 
 data Game = Game
-  { gMiddle :: [Card]
-  , gDeck   :: [Card]
-  , gP1     :: Player
-  , gP2     :: Player
+  { gMiddle  :: [Card]
+  , gDeck    :: [Card]
+  , gDiscard :: [Card]
+  , gP1      :: Player
+  , gP2      :: Player
   }
   deriving (Show)
 
@@ -40,11 +41,11 @@ initGame = go <$> shuffle allCards
     go deck = Game{..}
       where
         (gMiddle, deck') = splitAt 5 deck
+        gDiscard = []
         Just (h1, h2, gDeck) = deal 5 5 deck'
         gP1 = Player h1 []
         gP2 = Player h2 []
         
-
 type Pyramid = [Card]
 
 supported :: Card -> Pyramid -> Bool -> Bool
@@ -96,10 +97,28 @@ renderBoard p1 p2 = unlines $ intersperse " "
 -- GAME PLAY -------------------------------------------------------------------
 
 data Move = SwapMiddle | Do [Action]
-data Action = Put | Throw | None
+data Action = Put | Throw | Keep
 
-type Strategy m = [Card] -> [Card] -> m Move
+type Strategy m = Player -> m Move
 
-doRound :: Monad m => Game -> Strategy m -> Strategy m -> m Game
-doRound Game{..} s1 s2 = do
-  undefined
+doActions :: Player -> [Action] -> Maybe (Player, [Card])
+doActions Player{..} acts = do
+  (h, p, d) <- go (zip pHand acts) [] pPyramid []
+  Just (Player { pHand = reverse h, pPyramid = p }, d)
+  where
+    go :: [(Card, Action)] -> [Card] -> [Card] -> [Card] -> Maybe ([Card], [Card], [Card])
+    go ((c, a) : tl) h pyr d = case a of
+      Put   -> (\p -> go tl h p d) =<< add c pyr
+      Throw -> go tl h pyr (c : d)
+      Keep  -> go tl (c : h) pyr d
+
+{-doRound :: Monad m => Game -> Strategy m -> Strategy m -> m Game
+doRound g s1 s2 = do
+  m1 <- s1 (gP1 g)
+  let g2 =
+        case m1 of
+          SwapMiddle -> g { gMiddle = pHand $ gP1 g
+                          , gP1     = Player (gMiddle g) (pPyramid $ gP1 g)
+                          }
+          Do acts -> g { gP1 = 
+-}
