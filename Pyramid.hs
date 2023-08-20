@@ -73,9 +73,7 @@ isComplete p = supported (Card Ten Spade) p True
 
 
 renderIf :: Label -> [Card] -> String
-renderIf lbl cs = case find (\(Card x _) -> x == lbl) cs of
-  Just c -> show c
-  Nothing -> "     "
+renderIf lbl cs = maybe "     " show (find (\ (Card x _) -> x == lbl) cs)
 
 renderLine :: Int -> [Label] -> [Card] -> String
 renderLine n ls hand =
@@ -87,7 +85,7 @@ renderBoard p1 p2 = unlines $ intersperse " "
     , renderLine 9 [Eight, Nine] p1
     , renderLine 6 [Five .. Seven] p1
     , renderLine 3 [Ace .. Four] p1
-    , intercalate " " $ replicate 5 "\ESC[107;30m  Z  \ESC[0m"
+    , unwords $ replicate 5 "\ESC[107;30m  Z  \ESC[0m"
     , renderLine 3 [Ace .. Four] p2
     , renderLine 6 [Five .. Seven] p2
     , renderLine 9 [Eight, Nine] p2
