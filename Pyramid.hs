@@ -68,14 +68,12 @@ add c p | supported c p False = Just $ c : p
 isComplete :: Pyramid -> Bool
 isComplete p = supported (Card Ten Spade) p True
 
-
-
 renderIf :: Label -> [Card] -> String
-renderIf lbl cs = maybe "     " show (find (\ (Card x _) -> x == lbl) cs)
+renderIf lbl cs = maybe "      " show (find (\ (Card x _) -> x == lbl) cs)
 
 renderLine :: Int -> [Label] -> [Card] -> String
 renderLine n ls hand =
-  concat (replicate n " ") ++ intercalate " " [ renderIf l hand | l <- ls ]
+  concat (replicate n " ") ++ concat [ renderIf l hand | l <- ls ]
 
 renderBoard :: [Card] -> [Card] -> String
 renderBoard p1 p2 = unlines $ intersperse " "
@@ -89,6 +87,18 @@ renderBoard p1 p2 = unlines $ intersperse " "
     , renderLine 9 [Eight, Nine] p2
     , renderLine 12 [Ten] p2
     ]
+
+renderHand :: [Card] -> String
+renderHand = unwords . map show
+
+renderGame :: Game -> String
+renderGame Game{..} = unlines
+  [ "P1: " ++ renderHand (pHand gP1)
+  , ""
+  , renderBoard (pPyramid gP1) (pPyramid gP2)
+  , ""
+  , "P2: " ++ renderHand (pHand gP2)
+  ]
 
 -- GAME PLAY -------------------------------------------------------------------
 
@@ -126,7 +136,7 @@ doRound g s1 s2 = do
                   | otherwise -> g
   m2 <- s2 (gP2 g)
   let g3 =
-        case m1 of
+        case m2 of
           SwapMiddle -> g2 { gMiddle = pHand $ gP2 g2
                            , gP2     = Player (gMiddle g2) (pPyramid $ gP2 g2)
                            }
