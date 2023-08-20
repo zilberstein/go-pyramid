@@ -93,7 +93,9 @@ renderBoard p1 p2 = unlines $ intersperse " "
 -- GAME PLAY -------------------------------------------------------------------
 
 data Move = SwapMiddle | Do [Action]
+    deriving Show 
 data Action = Put | Throw | Keep
+    deriving Show 
 
 type Strategy m = Player -> m Move
 
