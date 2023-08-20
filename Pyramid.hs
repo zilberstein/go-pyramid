@@ -41,8 +41,8 @@ initGame = go <$> shuffle allCards
         (gMiddle, deck') = splitAt 5 deck
         gDiscard = []
         Just (h1, h2, gDeck) = deal 5 5 deck'
-        gP1 = Player h1 []
-        gP2 = Player h2 []
+        gP1 = Player (sort h1) []
+        gP2 = Player (sort h2) []
         
 type Pyramid = [Card]
 
@@ -109,9 +109,9 @@ doActions Player{..} acts = do
       Put   -> (\p -> go tl h p d) =<< add c pyr
       Throw -> go tl h pyr (c : d)
       Keep  -> go tl (c : h) pyr d
-    go [] h pyr d = Just (reverse h, pyr, d)
+    go [] h pyr d = Just (h, pyr, d)
 
-{-doRound :: Monad m => Game -> Strategy m -> Strategy m -> m Game
+doRound :: Game -> Strategy IO -> Strategy IO -> IO Game
 doRound g s1 s2 = do
   m1 <- s1 (gP1 g)
   let g2 =
@@ -119,5 +119,31 @@ doRound g s1 s2 = do
           SwapMiddle -> g { gMiddle = pHand $ gP1 g
                           , gP1     = Player (gMiddle g) (pPyramid $ gP1 g)
                           }
-          Do acts -> g { gP1 = 
--}
+          Do acts | Just (p, d) <- doActions (gP1 g) acts ->
+                      g { gP1 = p
+                        , gDiscard = d ++ gDiscard g
+                        }
+                  | otherwise -> g
+  m2 <- s2 (gP2 g)
+  let g3 =
+        case m1 of
+          SwapMiddle -> g2 { gMiddle = pHand $ gP2 g2
+                           , gP2     = Player (gMiddle g2) (pPyramid $ gP2 g2)
+                           }
+          Do acts | Just (p, d) <- doActions (gP2 g2) acts ->
+                      g2 { gP2 = p
+                         , gDiscard = d ++ gDiscard g2
+                         }
+                  | otherwise -> g2
+  
+  let n = 5 - length (pHand $ gP1 g3)
+      m = 5 - length (pHand $ gP2 g3)
+      goDeal gm@Game{..} = case deal n m gDeck of
+        Just (h1, h2, d) -> return gm { gDeck = d
+                                      , gP1 = gP1 { pHand = sort $ pHand gP1 ++ h1 }
+                                      , gP2 = gP2 { pHand = sort $ pHand gP2 ++ h2 }
+                                      }
+        Nothing -> do
+          d <- shuffle gDiscard
+          goDeal $ gm { gDeck = gDeck ++ d, gDiscard = [] }
+  goDeal g3
