@@ -1,10 +1,14 @@
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE TupleSections #-}
 module Pyramid where
 
 import Cards
 
+import Control.Monad
 import Data.List
 import Data.Maybe
+import Data.Map (Map)
+import qualified Data.Map as Map
 
 data Game = Game
   { gMiddle  :: [Card]
@@ -29,7 +33,7 @@ deal n m deck
   where
     go n 0 d = Just (take n d, [], drop n d)
     go n m (c1 : c2 : d) = do
-      (h1, h2, d') <- go (n-1) (n-1) d
+      (h1, h2, d') <- go (n-1) (m-1) d
       Just (c1:h1, c2:h2, d')
     go _ _ _ = Nothing
 
@@ -46,27 +50,28 @@ initGame = go <$> shuffle allCards
         
 type Pyramid = [Card]
 
-supported :: Card -> Pyramid -> Bool -> Bool
-supported (Card lbl _) p b =
+hasCard :: Label -> Pyramid -> Bool
+hasCard lbl = isJust . find (\(Card l _) -> l == lbl)
+
+supported :: Label -> Pyramid -> Bool -> Bool
+supported lbl p b =
   (if b then
-     isJust (find (\(Card l _) -> l == lbl) p)
+     hasCard lbl p
    else
-     isNothing (find (\(Card l _) -> l == lbl) p)
+     not $ hasCard lbl p
   ) &&
   case lbl of
-    Ten -> sup Nine && sup Eight
-    Nine -> sup Seven && sup Six
-    Eight -> sup Six && sup Five
-    l -> fromEnum l < 4 || (sup (toEnum (fromEnum l - 4)) && sup (toEnum (fromEnum l - 3)))
-    where
-      sup l = supported (Card l Heart) p True
+    Ten -> hasCard Nine p && hasCard Eight p
+    Nine -> hasCard Seven p && hasCard Six p
+    Eight -> hasCard Six p && hasCard Five p
+    l -> fromEnum l < 4 || (hasCard (toEnum (fromEnum l - 4)) p && hasCard (toEnum (fromEnum l - 3)) p)
 
 add :: Card -> Pyramid -> Maybe Pyramid
-add c p | supported c p False = Just $ c : p
-        | otherwise = Nothing
+add c@(Card l _) p | supported l p False = Just $ c : p
+                   | otherwise = Nothing
 
 isComplete :: Pyramid -> Bool
-isComplete p = supported (Card Ten Spade) p True
+isComplete p = supported Ten p True
 
 renderIf :: Label -> [Card] -> String
 renderIf lbl cs = maybe "      " show (find (\ (Card x _) -> x == lbl) cs)
@@ -157,3 +162,29 @@ doRound g s1 s2 = do
           d <- shuffle gDiscard
           goDeal $ gm { gDeck = gDeck ++ d, gDiscard = [] }
   goDeal g3
+
+data Outcome = P1Win | P2Win | Draw | Deadlock
+  deriving (Show, Eq, Ord)
+
+hasWon :: Player -> Bool
+hasWon Player{..} = supported Ten pPyramid True
+
+gameLoop :: Strategy IO -> Strategy IO -> Int -> Game -> IO Outcome
+gameLoop s1 s2 n g@Game{..}
+  | n <= 0 = return Deadlock
+  | otherwise = do
+--      putStrLn $ renderGame g
+      let p1win = hasWon gP1
+          p2win = hasWon gP2
+      if p1win && p2win
+        then
+        return Draw
+        else if p1win then
+        return P1Win
+        else if p2win then
+        return P2Win
+        else 
+          gameLoop s1 s2 (n-1) =<< doRound g s1 s2
+
+recordStats :: Int -> Strategy IO -> Strategy IO -> IO (Map Outcome Int)
+recordStats n s1 s2 = Map.fromListWith (+) . map (,1) <$> replicateM n (gameLoop s1 s2 100 =<< initGame)
