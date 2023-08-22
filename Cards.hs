@@ -4,7 +4,7 @@ module Cards ( Deck(..)
              , Label(..)
              , suits
              , labels
-             , allCards
+             , allCards, noFace
              , shuffle) where
 
 import qualified Data.Vector as Vector
@@ -61,6 +61,13 @@ allCards =
   [ Card lbl suit
   | suit <- suits
   , lbl  <- labels
+  ]
+
+noFace :: [Card]
+noFace =
+  [ Card lbl suit
+  | suit <- suits
+  , lbl <- [Ace .. Ten]
   ]
 
 shuffle :: [a] -> IO [a]
