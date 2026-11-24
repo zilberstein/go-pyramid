@@ -2,7 +2,6 @@
 // way web/index.html does (so evaluations measure what actually ships).
 import fs from 'node:fs';
 import { swapKey, keepKey, numKeepActions, mediumSwap, mediumKeep } from './engine.mjs';
-import { SWAP_DIV, KEEP_DIV } from './engine.mjs';
 
 export function loadPolicy(path) {
   const src = fs.readFileSync(path, 'utf8');
@@ -21,16 +20,17 @@ export function hardPolicy(pol) {
   return st => {
     const s = st.toMove, me = st.p[s], op = st.p[1 - s];
     // The table is for seat 1; seat 0 sees the same features apart from the seat bit.
-    const sa = pol.swap.get(swapKey(1, me, op, st));
+    const sa = pol.swap.get(swapKey(1, me, op));
     if (sa === undefined ? mediumSwap(st) : sa === 0) return 0;
     if (numKeepActions(me) === 1) return 1;
-    const ka = pol.keep.get(keepKey(1, me, op, st));
+    const ka = pol.keep.get(keepKey(1, me, op));
     return 1 + (ka === undefined ? mediumKeep(st) : ka);
   };
 }
 
 // Key divisors that isolate the seat bit (see swapKey/keepKey in engine.mjs).
-export { SWAP_DIV, KEEP_DIV } from './engine.mjs';
+export const SWAP_DIV = 1024 * 1024 * 8 * 8 * 4;
+export const KEEP_DIV = 1024 * 1024 * 4;
 
 // Combine raw seat-1 tables from one or more independent DCFR runs (summing
 // visit counts and average-strategy numerators), purify, and render

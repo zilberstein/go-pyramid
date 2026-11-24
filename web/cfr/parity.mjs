@@ -2,13 +2,13 @@
 // makes exactly the same move as policy.mjs on the same exported policy, on
 // thousands of sampled game states.   Usage: node parity.mjs  (needs Playwright)
 import { createRequire } from 'node:module';
-import { newGame, apply, mediumAction, numActions, undecided, makeRng, swapKey, keepKey } from './engine.mjs';
+import { newGame, apply, mediumAction, numActions, undecided, makeRng } from './engine.mjs';
 import { loadPolicy, hardPolicy } from './policy.mjs';
 
 const require = createRequire(import.meta.url);
 const { chromium } = require('playwright');
 const SUITS = ['♠', '♥', '♣', '♦'];
-const POLICY = process.argv[2] || new URL('../ai-hard-policy.js', import.meta.url).pathname;
+const POLICY = new URL('../ai-hard-policy.js', import.meta.url).pathname;
 const hard = hardPolicy(loadPolicy(POLICY));
 
 const toCards = h => h.map((r, i) => ({ rank: r === 11 ? 11 + (i % 3) : r, suit: SUITS[(i * 7 + r) % 4] }));
@@ -24,14 +24,10 @@ while (cases.length < 20000) {
       const sorted = me.hand.slice().sort((a, b) => a - b);   // the browser keeps hands sorted
       cases.push({
         expect: hard(st),
-        swapKey: swapKey(1, me, st.p[0], st),
-        keepKey: keepKey(1, me, st.p[0], st),
         rem: undecided(me),
         players: [{ hand: toCards(st.p[0].hand), pyr: pyr(st.p[0].mask) }, { hand: toCards(sorted), pyr: pyr(me.mask) }],
         known: me.known ? toCards(me.known.slice().sort((a, b) => a - b)) : null,
         oppStash: me.oppStash,
-        discard: toCards(st.discard),
-        deckCount: st.deck.length - st.dp,
       });
     }
     const n = numActions(st.p[st.toMove]);
@@ -41,15 +37,12 @@ while (cases.length < 20000) {
 
 const b = await chromium.launch();
 const pg = await b.newPage();
-await pg.route('**/ai-hard-policy.js', r => r.fulfill({ path: POLICY, contentType: 'text/javascript' }));
 await pg.goto('file://' + new URL('../index.html', import.meta.url).pathname);
 const res = await pg.evaluate(cs => {
-  let bad = 0, deviations = 0, badKeys = 0;
+  let bad = 0, deviations = 0;
   const examples = [];
   for (const c of cs) {
-    G = { players: c.players, discard: c.discard, deck: { length: c.deckCount }, ai: { knownMiddle: c.known, oppStash: c.oppStash } };
-    const hk = hardKeys(c.players[1], c.players[0], c.known, c.oppStash, c.discard, c.deckCount);
-    if (hk.swap !== c.swapKey || hk.keep !== c.keepKey) badKeys++;
+    G = { players: c.players, ai: { knownMiddle: c.known, oppStash: c.oppStash } };
     const d = hardDecide();
     let got;
     if (d === 'swap') got = 0;
@@ -61,13 +54,13 @@ const res = await pg.evaluate(cs => {
       got = 1 + k;
     }
     if (got !== c.expect) { bad++; if (examples.length < 3) examples.push({ got, expect: c.expect }); }
-    G = { players: c.players, discard: c.discard, deck: { length: c.deckCount }, ai: { knownMiddle: c.known, oppStash: c.oppStash } };
+    G = { players: c.players, ai: { knownMiddle: c.known, oppStash: c.oppStash } };
     const md = mediumDecide();
     if ((md === 'swap') !== (got === 0) || (md !== 'swap' && got !== 0 && JSON.stringify(md) !== JSON.stringify(d))) deviations++;
   }
-  return { bad, badKeys, deviations, examples, policySize: HARD_SWAP.size + HARD_KEEP.size };
+  return { bad, deviations, examples, policySize: HARD_SWAP.size + HARD_KEEP.size };
 }, cases);
 await b.close();
-console.log(`${cases.length} states: ${res.badKeys} infoset-key mismatches, ${res.bad} move mismatches between browser and engine; ` +
+console.log(`${cases.length} states: ${res.bad} mismatches between browser and engine; ` +
   `hard differs from medium in ${res.deviations}; policy entries ${res.policySize}`, res.examples);
-process.exit(res.bad || res.badKeys ? 1 : 0);
+process.exit(res.bad ? 1 : 0);
