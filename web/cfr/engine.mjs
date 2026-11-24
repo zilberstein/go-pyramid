@@ -1,0 +1,247 @@
+// Rank-only Go Pyramid engine used for CFR training and evaluation.
+//
+// Card isomorphism: suits never matter, so a card is just its rank 1..10,
+// and J/Q/K are all the same worthless card (FACE = 11).
+// The rules mirror web/index.html exactly: 5 face-down middle cards, 5-card
+// hands, seat 0 moves then seat 1, both refill to 5, discard pile is reshuffled
+// when the deck runs out, and the game ends after a round in which someone
+// completed their pyramid (both = draw).
+
+export const FACE = 11;
+export const FULL = 1023;          // all 10 ranks placed
+export const MAX_ROUNDS = 150;     // safety cap: counts as a draw
+
+const SUP = [];
+SUP[5] = [1, 2]; SUP[6] = [2, 3]; SUP[7] = [3, 4];
+SUP[8] = [5, 6]; SUP[9] = [6, 7]; SUP[10] = [8, 9];
+
+export const bit = r => 1 << (r - 1);
+
+export function popcount(x) {
+  let c = 0;
+  while (x) { x &= x - 1; c++; }
+  return c;
+}
+
+export function canPlace(r, m) {
+  if (r > 10 || (m & bit(r))) return false;
+  const s = SUP[r];
+  return !s || ((m & bit(s[0])) !== 0 && (m & bit(s[1])) !== 0);
+}
+
+// Set of useful ranks in a hand (duplicates and face cards dropped).
+export function rankSet(hand, m) {
+  let s = 0;
+  for (const r of hand) if (r <= 10) s |= bit(r);
+  return s & ~m;
+}
+
+// Ranks from `set` that can be placed this turn (in ascending order, so chains
+// like A, 2, then 5 work).
+export function chain(set, m) {
+  let placed = 0;
+  for (let r = 1; r <= 10; r++) {
+    if ((set & bit(r)) && canPlace(r, m | placed)) placed |= bit(r);
+  }
+  return placed;
+}
+
+// ------------------------------------------------------------------ abstraction
+export function oppBucket(m) {
+  const c = popcount(m);
+  return c <= 5 ? 0 : c <= 8 ? 1 : 2;
+}
+
+// What this player knows about the middle: 0 = unknown, otherwise 1 + how many
+// of its cards it could place right away.
+export function midFeature(known, m) {
+  if (!known) return 0;
+  return 1 + popcount(chain(rankSet(known, m), m));
+}
+
+// Each turn is two decisions, each with its own infoset.
+//
+// 1. Swap or play.  Key: seat, pyramid, which ranks I'd place now, how many other
+//    useful cards I hold, middle knowledge, opponent progress.
+export function swapKey(seat, me, opp) {
+  const hs = rankSet(me.hand, me.mask);
+  const placed = chain(hs, me.mask);
+  const nRem = popcount(hs & ~placed);
+  return ((((seat * 1024 + me.mask) * 1024 + placed) * 8 + nRem) * 8 + midFeature(me.known, me.mask)) * 4 + oppBucket(opp.mask);
+}
+
+// 2. Which cards that can't be placed yet to keep.  Key: seat, pyramid after
+//    placing, the set of unplaceable useful ranks, opponent progress.
+//    (Many different hands lead to the same key, so samples pool together.)
+export function keepKey(seat, me, opp) {
+  const hs = rankSet(me.hand, me.mask);
+  const placed = chain(hs, me.mask);
+  return ((seat * 1024 + (me.mask | placed)) * 1024 + (hs & ~placed)) * 4 + oppBucket(opp.mask);
+}
+
+// Undecided ranks: useful cards that cannot be placed this turn.
+export function undecided(me) {
+  const hs = rankSet(me.hand, me.mask);
+  return hs & ~chain(hs, me.mask);
+}
+
+// Combined turn action (what apply() takes):
+// 0 = swap hand with the middle.
+// 1 + k = place everything placeable, keep the undecided ranks selected by
+// bitmask k (bit j = j-th undecided rank in ascending order), discard the rest.
+export function numActions(me) {
+  return 1 + numKeepActions(me);
+}
+export function numKeepActions(me) {
+  return 1 << popcount(undecided(me));
+}
+
+export function keepBitsFor(rem, k) {
+  let keep = 0, j = 0;
+  for (let r = 1; r <= 10; r++) {
+    if (rem & bit(r)) {
+      if ((k >> j) & 1) keep |= bit(r);
+      j++;
+    }
+  }
+  return keep;
+}
+
+// ------------------------------------------------------------------ state
+export function makeRng(seed) {
+  let s = (seed >>> 0) || 0x9e3779b9;
+  return () => {
+    s ^= s << 13; s >>>= 0;
+    s ^= s >>> 17;
+    s ^= s << 5; s >>>= 0;
+    return s / 4294967296;
+  };
+}
+
+function shuffle(a, rng) {
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    const t = a[i]; a[i] = a[j]; a[j] = t;
+  }
+  return a;
+}
+
+export function newGame(rng) {
+  const deck = [];
+  for (let s = 0; s < 4; s++) for (let r = 1; r <= 13; r++) deck.push(r > 10 ? FACE : r);
+  shuffle(deck, rng);
+  const middle = deck.slice(0, 5);
+  const h0 = [], h1 = [];
+  let dp = 5;
+  for (let i = 0; i < 5; i++) { h0.push(deck[dp++]); h1.push(deck[dp++]); }
+  return {
+    deck, dp, discard: [], middle,
+    p: [{ mask: 0, hand: h0, known: null }, { mask: 0, hand: h1, known: null }],
+    toMove: 0, round: 1, result: null, rng,
+  };
+}
+
+export function clone(st, rng) {
+  return {
+    deck: st.deck, dp: st.dp, discard: st.discard.slice(), middle: st.middle.slice(),
+    p: st.p.map(q => ({ mask: q.mask, hand: q.hand.slice(), known: q.known })),
+    toMove: st.toMove, round: st.round, result: st.result, rng: rng || st.rng,
+  };
+}
+
+function refill(st, q) {
+  while (q.hand.length < 5) {
+    if (st.dp >= st.deck.length) {
+      if (!st.discard.length) return;
+      st.deck = shuffle(st.discard, st.rng);
+      st.discard = [];
+      st.dp = 0;
+    }
+    q.hand.push(st.deck[st.dp++]);
+  }
+}
+
+export function apply(st, a) {
+  const s = st.toMove, me = st.p[s], op = st.p[1 - s];
+  if (a === 0) {
+    const old = me.hand;
+    me.hand = st.middle;
+    st.middle = old;
+    me.known = old;     // I know exactly what I left in the middle
+    op.known = null;    // the opponent's knowledge is now stale
+  } else {
+    const hs = rankSet(me.hand, me.mask);
+    const placed = chain(hs, me.mask);
+    const keep = keepBitsFor(hs & ~placed, a - 1);
+    me.mask |= placed;
+    const nh = [];
+    let usedP = 0, usedK = 0;
+    for (const r of me.hand) {
+      if (r <= 10 && (placed & bit(r)) && !(usedP & bit(r))) usedP |= bit(r);
+      else if (r <= 10 && (keep & bit(r)) && !(usedK & bit(r))) { usedK |= bit(r); nh.push(r); }
+      else st.discard.push(r);
+    }
+    me.hand = nh;
+  }
+  if (s === 0) { st.toMove = 1; return; }
+  refill(st, st.p[0]);
+  refill(st, st.p[1]);
+  const c0 = st.p[0].mask === FULL, c1 = st.p[1].mask === FULL;
+  if (c0 || c1) st.result = c0 && c1 ? 0 : c0 ? 1 : -1;
+  else if (st.round >= MAX_ROUNDS) st.result = 0;
+  st.toMove = 0;
+  st.round++;
+}
+
+// ------------------------------------------------------------------ heuristics
+function numNotIn(hand, m) {
+  let n = 0;
+  for (const r of hand) if (r <= 10 && !(m & bit(r))) n++;
+  return n;
+}
+
+// "Medium": port of keepNextRow + middle swapping (AI/Naive.hs), identical to
+// the medium player in web/index.html.
+export function mediumSwap(st) {
+  const me = st.p[st.toMove];
+  const m = me.mask;
+  const placed = chain(rankSet(me.hand, m), m);
+  const known = me.known;
+  if (known) {
+    if (popcount(chain(rankSet(known, m), m)) > popcount(placed)) return true;
+    if (placed === 0 && numNotIn(known, m) < numNotIn(me.hand, m)) return true;
+    return false;
+  }
+  return placed === 0 && numNotIn(me.hand, m) > 2;
+}
+
+// Keep an unplaceable card if at least one of its supports is in place.
+export function mediumKeep(st) {
+  const me = st.p[st.toMove];
+  const m = me.mask;
+  const hs = rankSet(me.hand, m);
+  const placed = chain(hs, m);
+  const rem = hs & ~placed;
+  const after = m | placed;
+  let k = 0, j = 0;
+  for (let r = 1; r <= 10; r++) {
+    if (rem & bit(r)) {
+      const s = SUP[r];
+      if (s && ((after & bit(s[0])) || (after & bit(s[1])))) k |= 1 << j;
+      j++;
+    }
+  }
+  return k;
+}
+
+export function mediumAction(st) {
+  return mediumSwap(st) ? 0 : 1 + mediumKeep(st);
+}
+
+// "Easy": place what fits, throw everything else away, never swap.
+export function easyAction() { return 1; }
+
+export function playOut(st, policies) {
+  while (st.result === null) apply(st, policies[st.toMove](st));
+  return st.result;
+}
