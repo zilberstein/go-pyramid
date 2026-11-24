@@ -1,0 +1,526 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Go Pyramid</title>
+<style>
+  :root {
+    --felt: #1f5d3a;
+    --felt-dark: #174a2e;
+    --ink: #f3efe2;
+    --muted: #b9cbbd;
+    --card: #fbfaf5;
+    --card-ink: #1c1c1c;
+    --red: #c62828;
+    --back: #2c4f9e;
+    --accent: #ffd54f;
+    --slot: rgba(255,255,255,0.10);
+    --slot-border: rgba(255,255,255,0.28);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: radial-gradient(ellipse at center, var(--felt) 0%, var(--felt-dark) 100%);
+    color: var(--ink);
+    min-height: 100vh;
+  }
+  main { max-width: 760px; margin: 0 auto; padding: 12px 16px 32px; }
+  header { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+  h1 { font-size: 22px; margin: 4px 0; letter-spacing: 0.5px; }
+  button {
+    font: inherit; font-size: 14px; padding: 8px 14px; border-radius: 8px; cursor: pointer;
+    border: 1px solid rgba(0,0,0,0.25); background: var(--card); color: var(--card-ink);
+  }
+  button.primary { background: var(--accent); font-weight: 600; }
+  button:disabled { opacity: 0.4; cursor: default; }
+  .area { display: flex; flex-direction: column; align-items: center; gap: 6px; margin: 8px 0; }
+  .label { font-size: 13px; color: var(--muted); }
+  .row { display: flex; gap: 6px; justify-content: center; }
+  .card, .slot {
+    width: 50px; height: 72px; border-radius: 7px; flex: none;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    font-weight: 700; user-select: none; position: relative;
+  }
+  .card { background: var(--card); color: var(--card-ink); box-shadow: 0 2px 4px rgba(0,0,0,0.35); border: 1px solid #ccc; }
+  .card .rank { font-size: 20px; line-height: 1; }
+  .card .suit { font-size: 20px; line-height: 1.1; }
+  .card.red { color: var(--red); }
+  .card.face { background: #ece8da; }
+  .card.back {
+    background: repeating-linear-gradient(45deg, var(--back) 0 6px, #3a62b8 6px 12px);
+    border: 3px solid #fff;
+  }
+  .slot { border: 2px dashed var(--slot-border); background: var(--slot); color: rgba(255,255,255,0.35); font-size: 16px; }
+  .slot.legal { border: 2px solid var(--accent); color: var(--accent); cursor: pointer; background: rgba(255,213,79,0.15); }
+  .card.pending { outline: 3px dashed var(--accent); outline-offset: 1px; }
+  .hand .card { cursor: pointer; transition: transform 0.12s; }
+  .hand .card.selected { transform: translateY(-10px); outline: 3px solid var(--accent); }
+  .hand .card.playable::after {
+    content: ""; position: absolute; top: 4px; right: 4px; width: 7px; height: 7px; border-radius: 50%; background: #2e7d32;
+  }
+  .middle { padding: 10px 0; border-top: 1px solid rgba(255,255,255,0.15); border-bottom: 1px solid rgba(255,255,255,0.15); width: 100%; }
+  .piles { display: flex; gap: 18px; justify-content: center; align-items: center; font-size: 13px; color: var(--muted); }
+  .pile { display: flex; align-items: center; gap: 6px; }
+  .pile .card { width: 34px; height: 48px; }
+  .pile .card .rank, .pile .card .suit { font-size: 14px; }
+  .controls { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 8px; }
+  .status { text-align: center; min-height: 22px; font-size: 15px; margin: 6px 0; }
+  .log { font-size: 13px; color: var(--muted); max-height: 120px; overflow-y: auto; margin-top: 12px; padding: 8px; background: rgba(0,0,0,0.15); border-radius: 8px; }
+  .log div { padding: 2px 0; }
+  .overlay {
+    position: fixed; inset: 0; background: rgba(10,30,18,0.92); display: flex; align-items: center; justify-content: center;
+    flex-direction: column; gap: 14px; padding: 16px; text-align: center; z-index: 10;
+  }
+  .overlay[hidden] { display: none; }
+  .overlay h2 { margin: 0; }
+  .overlay p { max-width: 460px; color: var(--muted); margin: 0; line-height: 1.5; }
+  .overlay .opts { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+  details.rules { margin-top: 12px; font-size: 14px; color: var(--muted); line-height: 1.5; }
+  details.rules summary { cursor: pointer; color: var(--ink); }
+  @media (max-width: 420px) {
+    .card, .slot { width: 44px; height: 64px; }
+    .card .rank, .card .suit { font-size: 17px; }
+    .row { gap: 4px; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Go Pyramid</h1>
+    <button id="newGameBtn">New game</button>
+  </header>
+
+  <section class="area" id="oppArea">
+    <div class="label" id="oppLabel">Opponent</div>
+    <div class="row" id="oppHand"></div>
+    <div id="oppPyramid"></div>
+  </section>
+
+  <section class="area middle">
+    <div class="row" id="middle"></div>
+    <div class="piles">
+      <div class="pile"><span id="deckCount"></span></div>
+      <div class="pile"><span>Discard</span><span id="discardTop"></span><span id="discardCount"></span></div>
+    </div>
+  </section>
+
+  <section class="area" id="myArea">
+    <div id="myPyramid"></div>
+    <div class="label" id="myLabel">You</div>
+    <div class="row hand" id="myHand"></div>
+  </section>
+
+  <div class="status" id="status"></div>
+  <div class="controls">
+    <button id="placeBtn" disabled>Place</button>
+    <button id="discardBtn" disabled>Discard</button>
+    <button id="undoBtn" disabled>Undo turn</button>
+    <button id="swapBtn">Swap hand with middle</button>
+    <button id="endBtn" class="primary">End turn</button>
+  </div>
+
+  <div class="log" id="log"></div>
+
+  <details class="rules">
+    <summary>Rules</summary>
+    <p>Each player builds a pyramid: the base is A&nbsp;2&nbsp;3&nbsp;4, then 5&nbsp;6&nbsp;7, then 8&nbsp;9, and 10 on top.
+    A card can only be placed once both cards supporting it are in place (5 needs A&nbsp;and&nbsp;2, 6 needs 2&nbsp;and&nbsp;3, 8 needs 5&nbsp;and&nbsp;6, 10 needs 8&nbsp;and&nbsp;9). Base cards can be placed any time. Face cards are worthless.</p>
+    <p>Each turn you either place and/or discard any cards from your hand, or swap your whole hand with the 5 face-down cards in the middle.
+    After both players have moved, hands are refilled to 5 cards. When the deck runs out, the discard pile is shuffled in.</p>
+    <p>The first player to complete their pyramid at the end of a round wins. If both complete it in the same round, it's a draw.</p>
+  </details>
+</main>
+
+<div class="overlay" id="overlay">
+  <h2 id="ovTitle">Go Pyramid</h2>
+  <p id="ovText">Build your pyramid from A up to 10 before your opponent does.</p>
+  <div class="opts" id="ovOpts"></div>
+</div>
+
+<script>
+"use strict";
+
+// ---------------------------------------------------------------- Cards
+const SUITS = ["♠", "♥", "♣", "♦"];
+const RANK_NAMES = { 1: "A", 11: "J", 12: "Q", 13: "K" };
+const rankName = r => RANK_NAMES[r] || String(r);
+const cardName = c => rankName(c.rank) + c.suit;
+const isRed = c => c.suit === "♥" || c.suit === "♦";
+
+function freshDeck() {
+  const d = [];
+  for (const suit of SUITS) for (let rank = 1; rank <= 13; rank++) d.push({ rank, suit });
+  return d;
+}
+function shuffle(a) {
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+const sortHand = h => h.sort((a, b) => a.rank - b.rank || SUITS.indexOf(a.suit) - SUITS.indexOf(b.suit));
+
+// ---------------------------------------------------------------- Pyramid rules
+const ROWS = [[1, 2, 3, 4], [5, 6, 7], [8, 9], [10]];
+const SUPPORTS = { 5: [1, 2], 6: [2, 3], 7: [3, 4], 8: [5, 6], 9: [6, 7], 10: [8, 9] };
+
+// pyramid: object rank -> card
+function canPlace(rank, pyr) {
+  if (rank > 10 || pyr[rank]) return false;
+  return (SUPPORTS[rank] || []).every(r => pyr[r]);
+}
+const isComplete = pyr => !!pyr[10];
+
+// ---------------------------------------------------------------- Game state
+let G = null;      // game state
+let T = null;      // current turn (pending actions)
+let mode = "ai";   // "ai" or "hotseat"
+let busy = false;
+
+function newGame(m) {
+  mode = m;
+  const deck = shuffle(freshDeck());
+  const middle = deck.splice(0, 5);
+  const h = [[], []];
+  for (let i = 0; i < 5; i++) { h[0].push(deck.shift()); h[1].push(deck.shift()); }
+  G = {
+    deck, middle, discard: [],
+    players: [
+      { name: mode === "ai" ? "You" : "Player 1", hand: sortHand(h[0]), pyr: {} },
+      { name: mode === "ai" ? "Computer" : "Player 2", hand: sortHand(h[1]), pyr: {} },
+    ],
+    current: 0,
+    round: 1,
+    over: false,
+    ai: { knownMiddle: null },
+  };
+  document.getElementById("log").innerHTML = "";
+  log(`Round 1 begins.`);
+  startTurn();
+  hideOverlay();
+  if (mode === "hotseat") passScreen(0);
+}
+
+function startTurn() {
+  const p = G.players[G.current];
+  T = { hand: p.hand.slice(), pyr: { ...p.pyr }, placed: [], discarded: [], selected: null };
+}
+
+// Which player is shown at the bottom of the screen
+function viewer() { return mode === "ai" ? 0 : G.current; }
+
+// ---------------------------------------------------------------- Turn actions
+function selectCard(i) {
+  if (busy || G.over) return;
+  T.selected = T.selected === i ? null : i;
+  render();
+}
+function placeSelected(rank) {
+  if (T.selected === null) return;
+  const card = T.hand[T.selected];
+  if (rank !== undefined && card.rank !== rank) return;
+  if (!canPlace(card.rank, T.pyr)) return;
+  T.pyr[card.rank] = card;
+  T.placed.push(card);
+  T.hand.splice(T.selected, 1);
+  T.selected = null;
+  render();
+}
+function discardSelected() {
+  if (T.selected === null) return;
+  T.discarded.push(T.hand.splice(T.selected, 1)[0]);
+  T.selected = null;
+  render();
+}
+function undoTurn() { startTurn(); render(); }
+
+function describeMove(name, placed, discarded) {
+  const parts = [];
+  if (placed.length) parts.push(`placed ${placed.map(cardName).join(" ")}`);
+  if (discarded.length) parts.push(`discarded ${discarded.map(cardName).join(" ")}`);
+  return `${name} ${parts.length ? parts.join(", ") : "passed"}.`;
+}
+
+function commitTurn() {
+  const p = G.players[G.current];
+  p.hand = T.hand;
+  p.pyr = T.pyr;
+  G.discard.push(...T.discarded);
+  log(describeMove(p.name, T.placed, T.discarded));
+  afterMove();
+}
+
+function swapMiddle() {
+  const p = G.players[G.current];
+  const old = p.hand;
+  p.hand = sortHand(G.middle);
+  G.middle = old;
+  log(`${p.name} swapped hand with the middle.`);
+  // The AI only knows the middle if it put it there itself.
+  G.ai.knownMiddle = G.current === 1 ? old.slice() : null;
+  afterMove();
+}
+
+function afterMove() {
+  if (G.current === 0) {
+    G.current = 1;
+    startTurn();
+    if (mode === "ai") { render(); aiTurn(); }
+    else { render(); passScreen(1); }
+  } else {
+    endRound();
+  }
+}
+
+function drawCard() {
+  if (G.deck.length === 0) {
+    G.deck = shuffle(G.discard);
+    G.discard = [];
+    log("Deck empty: discard pile shuffled into a new deck.");
+  }
+  return G.deck.shift();
+}
+
+function endRound() {
+  for (const p of G.players) {
+    while (p.hand.length < 5) {
+      const c = drawCard();
+      if (!c) break;
+      p.hand.push(c);
+    }
+    sortHand(p.hand);
+  }
+  const done = G.players.map(p => isComplete(p.pyr));
+  if (done[0] || done[1]) {
+    G.over = true;
+    T = null;
+    render();
+    let title;
+    if (done[0] && done[1]) title = "It's a draw!";
+    else if (mode === "ai") title = done[0] ? "You win!" : "The computer wins.";
+    else title = `${G.players[done[0] ? 0 : 1].name} wins!`;
+    log(title);
+    showOverlay(title, `Finished in ${G.round} rounds.`, true);
+    return;
+  }
+  G.round++;
+  G.current = 0;
+  log(`Round ${G.round}: hands refilled to 5.`);
+  startTurn();
+  render();
+  if (mode === "hotseat") passScreen(0);
+}
+
+// ---------------------------------------------------------------- Computer player
+// Port of "keepNextRow" + middle-swapping logic from AI/Naive.hs.
+function numPlayable(hand, pyr) {
+  const p = { ...pyr };
+  let n = 0;
+  for (const c of hand) if (canPlace(c.rank, p)) { p[c.rank] = c; n++; }
+  return n;
+}
+function numNotIn(hand, pyr) {
+  return hand.filter(c => c.rank <= 10 && !pyr[c.rank]).length;
+}
+function keepNextRow(hand, pyr) {
+  const p = { ...pyr };
+  const keeps = new Set();
+  const acts = [];
+  const has = r => !!p[r];
+  const needSoon = r => {
+    if (keeps.has(r) || has(r)) return false;
+    const s = SUPPORTS[r];
+    return !!s && (has(s[0]) || has(s[1]));
+  };
+  for (const c of hand) {
+    if (canPlace(c.rank, p)) { p[c.rank] = c; acts.push("put"); }
+    else if (needSoon(c.rank)) { keeps.add(c.rank); acts.push("keep"); }
+    else acts.push("throw");
+  }
+  return acts;
+}
+function aiDecide() {
+  const me = G.players[1];
+  const acts = keepNextRow(me.hand, me.pyr);
+  const noPuts = !acts.includes("put");
+  const known = G.ai.knownMiddle;
+  if (known) {
+    if (numPlayable(known, me.pyr) > numPlayable(me.hand, me.pyr)) return "swap";
+    if (noPuts && numNotIn(known, me.pyr) < numNotIn(me.hand, me.pyr)) return "swap";
+  } else if (noPuts && numNotIn(me.hand, me.pyr) > 2) {
+    return "swap";
+  }
+  return acts;
+}
+function aiTurn() {
+  busy = true;
+  render();
+  setTimeout(() => {
+    busy = false;
+    const d = aiDecide();
+    if (d === "swap") { swapMiddle(); return; }
+    const hand = T.hand.slice();
+    T.hand = [];
+    hand.forEach((c, i) => {
+      if (d[i] === "put") { T.pyr[c.rank] = c; T.placed.push(c); }
+      else if (d[i] === "throw") T.discarded.push(c);
+      else T.hand.push(c);
+    });
+    commitTurn();
+  }, 700);
+}
+
+// ---------------------------------------------------------------- Rendering
+const $ = id => document.getElementById(id);
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== undefined) e.textContent = text;
+  return e;
+}
+function cardEl(c) {
+  const e = el("div", "card" + (isRed(c) ? " red" : "") + (c.rank > 10 ? " face" : ""));
+  e.append(el("span", "rank", rankName(c.rank)), el("span", "suit", c.suit));
+  e.setAttribute("aria-label", cardName(c));
+  return e;
+}
+const backEl = () => el("div", "card back");
+
+function pyramidEl(pyr, { flipped, pending, legalRank, onSlot }) {
+  const wrap = el("div", "area");
+  wrap.style.gap = "6px";
+  wrap.style.margin = "0";
+  const rows = flipped ? ROWS.slice().reverse() : ROWS;
+  for (const row of rows) {
+    const r = el("div", "row");
+    for (const rank of row) {
+      if (pyr[rank]) {
+        const c = cardEl(pyr[rank]);
+        if (pending && pending.includes(pyr[rank])) c.classList.add("pending");
+        r.append(c);
+      } else {
+        const s = el("div", "slot", rankName(rank));
+        if (legalRank === rank) {
+          s.classList.add("legal");
+          s.onclick = () => onSlot(rank);
+        }
+        r.append(s);
+      }
+    }
+    wrap.append(r);
+  }
+  return wrap;
+}
+
+function render() {
+  if (!G) return;
+  const me = viewer(), opp = 1 - me;
+  const myTurn = !G.over && !busy && G.current === me && T;
+  const meP = G.players[me], oppP = G.players[opp];
+
+  // When it's my turn, show my pending state; otherwise my committed state.
+  const myPyr = myTurn ? T.pyr : meP.pyr;
+  const myHand = myTurn ? T.hand : meP.hand;
+
+  $("oppLabel").textContent = oppP.name;
+  $("myLabel").textContent = meP.name + (myTurn ? " — your turn" : "");
+
+  const oh = $("oppHand"); oh.innerHTML = "";
+  if (G.over) oppP.hand.forEach(c => oh.append(cardEl(c)));
+  else oppP.hand.forEach(() => oh.append(backEl()));
+
+  // Opponent's pyramid: apex away from the middle (at the top).
+  $("oppPyramid").replaceChildren(pyramidEl(oppP.pyr, { flipped: true }));
+
+  const sel = myTurn && T.selected !== null ? T.hand[T.selected] : null;
+  const legalRank = sel && canPlace(sel.rank, T.pyr) ? sel.rank : null;
+  // My pyramid: base next to the middle, apex toward me.
+  $("myPyramid").replaceChildren(pyramidEl(myPyr, {
+    flipped: false,
+    pending: myTurn ? T.placed : null,
+    legalRank,
+    onSlot: placeSelected,
+  }));
+
+  const hand = $("myHand"); hand.innerHTML = "";
+  myHand.forEach((c, i) => {
+    const e = cardEl(c);
+    if (myTurn) {
+      if (i === T.selected) e.classList.add("selected");
+      if (canPlace(c.rank, T.pyr)) e.classList.add("playable");
+      e.onclick = () => selectCard(i);
+    }
+    hand.append(e);
+  });
+
+  const mid = $("middle"); mid.innerHTML = "";
+  G.middle.forEach(() => mid.append(backEl()));
+
+  $("deckCount").textContent = `Deck: ${G.deck.length}`;
+  const dt = $("discardTop"); dt.innerHTML = "";
+  if (G.discard.length) dt.append(cardEl(G.discard[G.discard.length - 1]));
+  $("discardCount").textContent = `(${G.discard.length})`;
+
+  const acted = myTurn && (T.placed.length || T.discarded.length);
+  $("placeBtn").disabled = !myTurn || legalRank === null;
+  $("discardBtn").disabled = !myTurn || !sel;
+  $("undoBtn").disabled = !acted;
+  $("swapBtn").disabled = !myTurn || acted;
+  $("endBtn").disabled = !myTurn;
+
+  let status = "";
+  if (G.over) status = "Game over.";
+  else if (busy) status = "Computer is thinking…";
+  else if (myTurn) {
+    if (sel) status = legalRank !== null ? `Place ${cardName(sel)} or discard it.`
+      : sel.rank > 10 ? `Face cards are worthless — discard it.` : `${cardName(sel)} can't be placed yet.`;
+    else status = `Round ${G.round}. Select a card, or swap your hand with the middle.`;
+  }
+  $("status").textContent = status;
+}
+
+function log(msg) {
+  const l = $("log");
+  l.append(el("div", "", msg));
+  l.scrollTop = l.scrollHeight;
+}
+
+// ---------------------------------------------------------------- Overlays
+function showOverlay(title, text, withModes) {
+  $("ovTitle").textContent = title;
+  $("ovText").textContent = text;
+  const o = $("ovOpts"); o.innerHTML = "";
+  if (withModes) {
+    const a = el("button", "primary", "Play vs computer"); a.onclick = () => newGame("ai");
+    o.append(a);
+    if (G && G.over) { const c = el("button", "", "View board"); c.onclick = hideOverlay; o.append(c); }
+  }
+  $("overlay").hidden = false;
+}
+function hideOverlay() { $("overlay").hidden = true; }
+function passScreen(p) {
+  $("ovTitle").textContent = `${G.players[p].name}'s turn`;
+  $("ovText").textContent = `Pass the device to ${G.players[p].name}. Hands stay hidden until you tap Ready.`;
+  const o = $("ovOpts"); o.innerHTML = "";
+  const b = el("button", "primary", "Ready");
+  b.onclick = () => { hideOverlay(); render(); };
+  o.append(b);
+  $("overlay").hidden = false;
+}
+
+// ---------------------------------------------------------------- Wiring
+$("placeBtn").onclick = () => placeSelected();
+$("discardBtn").onclick = discardSelected;
+$("undoBtn").onclick = undoTurn;
+$("swapBtn").onclick = () => { if (!busy) swapMiddle(); };
+$("endBtn").onclick = () => { if (!busy) commitTurn(); };
+$("newGameBtn").onclick = () => showOverlay("New game", "Start a new game against the computer?", true);
+
+showOverlay("Go Pyramid", "Build your pyramid from A up to 10 before your opponent does.", true);
+</script>
+</body>
+</html>
