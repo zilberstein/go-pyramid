@@ -1,0 +1,992 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Go Pyramid</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&display=swap">
+<style>
+  :root {
+    --night: #0f1d3a;
+    --night-2: #1b2f5c;
+    --lapis: #234a9b;
+    --gold: #d9a93b;
+    --gold-light: #f3d27a;
+    --turquoise: #2fa39a;
+    --terracotta: #b5482b;
+    --ink: #f4e6c3;
+    --muted: #c9b98f;
+    --papyrus: #f3e4bd;
+    --papyrus-dark: #e4cf98;
+    --card-ink: #3a2414;
+    --red: #a8321c;
+    --sand: #d8b277;
+    --sand-dark: #b88a4c;
+    --accent: var(--gold-light);
+    --band: repeating-linear-gradient(90deg,
+      var(--lapis) 0 10px, var(--gold) 10px 14px, var(--turquoise) 14px 24px,
+      var(--gold) 24px 28px, var(--terracotta) 28px 38px, var(--gold) 38px 42px);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: Georgia, "Times New Roman", serif;
+    background:
+      radial-gradient(1.5px 1.5px at 12% 18%, #fff8 50%, transparent 51%),
+      radial-gradient(1px 1px at 33% 8%, #fff7 50%, transparent 51%),
+      radial-gradient(1.5px 1.5px at 58% 22%, #fff6 50%, transparent 51%),
+      radial-gradient(1px 1px at 81% 12%, #fff8 50%, transparent 51%),
+      radial-gradient(1px 1px at 92% 35%, #fff6 50%, transparent 51%),
+      radial-gradient(1px 1px at 5% 45%, #fff5 50%, transparent 51%),
+      radial-gradient(ellipse at 50% 110%, #7a4a22 0%, transparent 55%),
+      linear-gradient(180deg, var(--night) 0%, var(--night-2) 100%);
+    background-attachment: fixed;
+    color: var(--ink);
+    min-height: 100vh;
+  }
+  main { max-width: 760px; margin: 0 auto; padding: 12px 16px 32px; }
+  header {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap;
+    padding-bottom: 10px; position: relative;
+  }
+  header::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 6px; background: var(--band); border-radius: 2px; }
+  h1 {
+    font-family: Cinzel, Georgia, serif; font-size: 24px; margin: 4px 0; letter-spacing: 2px;
+    color: var(--gold-light); text-shadow: 0 2px 0 #6b4a12, 0 0 12px rgba(243,210,122,0.35);
+  }
+  h1 .ankh { color: var(--gold); margin: 0 6px; font-family: "Segoe UI Symbol", "Noto Sans Symbols", serif; }
+  button {
+    font: inherit; font-size: 14px; padding: 8px 14px; border-radius: 6px; cursor: pointer;
+    border: 1px solid var(--gold); background: var(--papyrus); color: var(--card-ink);
+    font-family: Cinzel, Georgia, serif; font-weight: 600; letter-spacing: 0.5px;
+  }
+  button.primary {
+    background: linear-gradient(180deg, var(--gold-light), var(--gold)); color: #3a2414;
+    border-color: #8a6420; box-shadow: 0 0 10px rgba(243,210,122,0.35);
+  }
+  button:disabled { opacity: 0.4; cursor: default; box-shadow: none; }
+  .area { display: flex; flex-direction: column; align-items: center; gap: 6px; margin: 8px 0; }
+  .label { font-size: 13px; color: var(--muted); font-family: Cinzel, Georgia, serif; letter-spacing: 1px; }
+  .row { display: flex; gap: 6px; justify-content: center; }
+  .card, .slot {
+    width: 50px; height: 72px; border-radius: 6px; flex: none;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    font-weight: 700; user-select: none; position: relative;
+  }
+  .card {
+    background: linear-gradient(160deg, var(--papyrus) 0%, var(--papyrus-dark) 100%);
+    color: var(--card-ink); border: 1px solid #a8844a;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.45), inset 0 0 0 2px rgba(255,255,255,0.35);
+    font-family: Cinzel, Georgia, serif;
+  }
+  .card::before {
+    content: ""; position: absolute; inset: 3px; border: 1px solid rgba(168,132,74,0.55); border-radius: 4px; pointer-events: none;
+  }
+  .card .rank { font-size: 20px; line-height: 1; }
+  .card .suit { font-size: 19px; line-height: 1.1; font-family: Georgia, serif; }
+  .card.red { color: var(--red); }
+  .card.face { background: linear-gradient(160deg, #dccaa0, #c9b07a); color: #6b5838; }
+  .card.back {
+    background:
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 30'%3E%3Cg fill='none' stroke='%23f3d27a' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M4 12 Q20 0 36 12 Q20 20 4 12Z'/%3E%3Cpath d='M6 6 Q20 -3 34 5'/%3E%3Cpath d='M17 18 L15 28'/%3E%3Cpath d='M23 18 Q26 26 32 24 Q34 20 30 20'/%3E%3C/g%3E%3Ccircle cx='20' cy='11' r='4' fill='%23f3d27a'/%3E%3C/svg%3E") center / 70% no-repeat,
+      linear-gradient(160deg, var(--lapis), #16306a);
+    border: 2px solid var(--gold);
+    box-shadow: 0 2px 5px rgba(0,0,0,0.45), inset 0 0 0 2px #16306a, inset 0 0 0 3px var(--gold);
+  }
+  .card.back::before { display: none; }
+  .slot {
+    background:
+      linear-gradient(0deg, transparent 48%, rgba(90,60,25,0.25) 48% 52%, transparent 52%),
+      linear-gradient(170deg, var(--sand), var(--sand-dark));
+    border: 1px solid #8a6a38; opacity: 0.45;
+    color: #5a3d1c; font-size: 16px; font-family: Cinzel, Georgia, serif;
+    box-shadow: inset 0 -3px 0 rgba(0,0,0,0.2);
+  }
+  .slot.legal {
+    opacity: 1; cursor: pointer; border: 2px solid var(--gold-light); color: #3a2414;
+    box-shadow: 0 0 12px rgba(243,210,122,0.8), inset 0 -3px 0 rgba(0,0,0,0.2);
+  }
+  button, .card, .slot { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+  button:not(:disabled):active { transform: translateY(1px) scale(0.97); }
+  #endBtn { font-size: 16px; padding: 10px 18px; }
+  .hand .card:not(.playable) { filter: saturate(0.75) brightness(0.92); }
+  .hand .card:not(.playable)::after {
+    content: "✕"; position: absolute; top: 3px; right: 5px; font-size: 10px; line-height: 1; color: #8a6a48;
+  }
+  .hand .card:active { transform: translateY(-4px) scale(0.96); }
+  .pyr .card.pending, .pile .card.pending { cursor: pointer; }
+  .hand .slot.empty {
+    background: rgba(243,210,122,0.06); opacity: 1; box-shadow: none;
+    border: 2px dashed rgba(243,210,122,0.45);
+  }
+  .hand .slot.empty.was-placed, .hand .slot.empty.was-discarded { cursor: pointer; }
+  .hand .slot.empty.was-placed::after, .hand .slot.empty.was-discarded::after {
+    font-size: 18px; color: rgba(243,210,122,0.5);
+  }
+  .hand .slot.empty.was-placed::after { content: "▲"; }
+  .hand .slot.empty.was-discarded::after { content: "✕"; }
+  .card.pending { outline: 3px dashed var(--accent); outline-offset: 1px; }
+  .hand .card { cursor: pointer; transition: transform 0.12s; }
+  .hand .card.playable::after {
+    content: "☥"; position: absolute; top: 2px; right: 4px; font-size: 12px; line-height: 1; color: var(--turquoise);
+    font-family: "Segoe UI Symbol", "Noto Sans Symbols", serif;
+  }
+  .middle { padding: 14px 0 10px; width: 100%; position: relative; }
+  .middle::before, .middle::after { content: ""; position: absolute; left: 0; right: 0; height: 4px; background: var(--band); opacity: 0.8; }
+  .middle::before { top: 0; }
+  .middle::after { bottom: 0; }
+  .piles { display: flex; gap: 18px; justify-content: center; align-items: center; font-size: 13px; color: var(--muted); font-family: Cinzel, Georgia, serif; }
+  .pile { display: flex; align-items: center; gap: 6px; }
+  .pile .card { width: 34px; height: 48px; }
+  .pile .card .rank, .pile .card .suit { font-size: 14px; }
+  .controls { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 8px; }
+  .status { text-align: center; min-height: 22px; font-size: 15px; margin: 6px 0; font-style: italic; }
+  .dock {
+    position: sticky; bottom: 0; z-index: 5; margin: 8px -16px 0; padding: 14px 16px 12px;
+    background: linear-gradient(180deg, #1a2a50, #0f1d3a);
+    box-shadow: 0 -6px 16px rgba(0,0,0,0.45);
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+  }
+  .dock::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 6px; background: var(--band); }
+  .dock .hand { padding-top: 10px; }
+  .dock .status { margin: 0; }
+  .dock .controls { margin: 0; }
+  .pyr .card, .pyr .slot { width: 40px; height: 56px; border-radius: 3px; }
+  .pyr .card .rank, .pyr .card .suit { font-size: 16px; }
+  .pyr .slot { font-size: 14px; }
+  .pyr .row { gap: 3px; }
+  .log {
+    font-size: 13px; color: #4a3220; max-height: 120px; overflow-y: auto; margin-top: 12px; padding: 8px 12px;
+    background: linear-gradient(160deg, var(--papyrus), var(--papyrus-dark)); border-radius: 4px;
+    border-left: 6px solid #c9a96a; border-right: 6px solid #c9a96a;
+  }
+  .log div { padding: 2px 0; }
+  .overlay {
+    position: fixed; inset: 0; background: rgba(8,14,32,0.94); display: flex; align-items: center; justify-content: center;
+    flex-direction: column; gap: 14px; padding: 16px; text-align: center; z-index: 10;
+  }
+  .overlay[hidden] { display: none; }
+  .overlay h2 { margin: 0; font-family: Cinzel, Georgia, serif; color: var(--gold-light); letter-spacing: 2px; font-size: 28px; }
+  .overlay h2::before { content: "☥ "; color: var(--gold); }
+  .overlay h2::after { content: " ☥"; color: var(--gold); }
+  .overlay p { max-width: 460px; color: var(--muted); margin: 0; line-height: 1.5; }
+  .overlay .opts { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; max-width: 520px; }
+  .online-row { flex-basis: 100%; display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 10px; padding-top: 14px; border-top: 1px solid rgba(243,210,122,0.3); }
+  .online-row input {
+    font: inherit; font-size: 14px; padding: 8px 10px; border-radius: 6px; width: 150px;
+    border: 1px solid var(--gold); background: rgba(243,228,189,0.1); color: var(--ink);
+  }
+  details.rules { margin-top: 12px; font-size: 14px; color: var(--muted); line-height: 1.5; }
+  details.rules summary { cursor: pointer; color: var(--gold-light); font-family: Cinzel, Georgia, serif; }
+  @media (max-width: 420px) {
+    .card, .slot { width: 44px; height: 64px; }
+    .card .rank, .card .suit { font-size: 17px; }
+    .row { gap: 4px; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1><span class="ankh">☥</span>Go Pyramid<span class="ankh">☥</span></h1>
+    <button id="newGameBtn">New game</button>
+  </header>
+
+  <section class="area" id="oppArea">
+    <div class="label" id="oppLabel">Opponent</div>
+    <div class="row" id="oppHand"></div>
+    <div id="oppPyramid"></div>
+  </section>
+
+  <section class="area middle">
+    <div class="row" id="middle"></div>
+    <div class="piles">
+      <div class="pile"><span id="deckCount"></span></div>
+      <div class="pile"><span>Discard</span><span id="discardTop"></span><span id="discardCount"></span></div>
+    </div>
+  </section>
+
+  <section class="area" id="myArea">
+    <div id="myPyramid"></div>
+  </section>
+
+  <div class="dock">
+    <div class="label" id="myLabel">You</div>
+    <div class="row hand" id="myHand"></div>
+    <div class="status" id="status"></div>
+    <div class="controls">
+      <button id="undoBtn" disabled title="Undo last card (Z)">↶ Undo</button>
+      <button id="swapBtn" disabled title="Swap your whole hand with the middle (S)">Swap with middle</button>
+      <button id="endBtn" class="primary" disabled>Hit me dealer 0</button>
+    </div>
+  </div>
+
+  <div class="log" id="log"></div>
+
+  <details class="rules">
+    <summary>Rules</summary>
+    <p>Each player builds a pyramid: the base is A&nbsp;2&nbsp;3&nbsp;4, then 5&nbsp;6&nbsp;7, then 8&nbsp;9, and 10 on top.
+    A card can only be placed once both cards supporting it are in place (5 needs A&nbsp;and&nbsp;2, 6 needs 2&nbsp;and&nbsp;3, 8 needs 5&nbsp;and&nbsp;6, 10 needs 8&nbsp;and&nbsp;9). Base cards can be placed any time. Face cards are worthless.</p>
+    <p><b>Controls:</b> tap a card (or press 1–5) to play it: cards marked ☥ go on your pyramid, cards marked ✕ are discarded. Tap a card you just played to take it back, or use Undo (Z). Hit the dealer with Enter; swap with S.</p>
+    <p>Each turn you either place and/or discard any cards from your hand, or swap your whole hand with the 5 face-down cards in the middle.
+    After both players have moved, hands are refilled to 5 cards. When the deck runs out, the discard pile is shuffled in.</p>
+    <p>The first player to complete their pyramid at the end of a round wins. If both complete it in the same round, it's a draw.</p>
+  </details>
+</main>
+
+<div class="overlay" id="overlay">
+  <h2 id="ovTitle">Go Pyramid</h2>
+  <p id="ovText">Build your pyramid from A up to 10 before your opponent does.</p>
+  <div class="opts" id="ovOpts"></div>
+</div>
+
+<script src="ai-hard-policy.js"></script>
+<script>
+"use strict";
+
+// ---------------------------------------------------------------- Cards
+const SUITS = ["♠", "♥", "♣", "♦"];
+const RANK_NAMES = { 1: "A", 11: "J", 12: "Q", 13: "K" };
+const rankName = r => RANK_NAMES[r] || String(r);
+const cardName = c => rankName(c.rank) + c.suit;
+const isRed = c => c.suit === "♥" || c.suit === "♦";
+
+function freshDeck() {
+  const d = [];
+  for (const suit of SUITS) for (let rank = 1; rank <= 13; rank++) d.push({ rank, suit });
+  return d;
+}
+function shuffle(a) {
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+const sortHand = h => h.sort((a, b) => a.rank - b.rank || SUITS.indexOf(a.suit) - SUITS.indexOf(b.suit));
+
+// ---------------------------------------------------------------- Pyramid rules
+const ROWS = [[1, 2, 3, 4], [5, 6, 7], [8, 9], [10]];
+const SUPPORTS = { 5: [1, 2], 6: [2, 3], 7: [3, 4], 8: [5, 6], 9: [6, 7], 10: [8, 9] };
+
+// pyramid: object rank -> card
+function canPlace(rank, pyr) {
+  if (rank > 10 || pyr[rank]) return false;
+  return (SUPPORTS[rank] || []).every(r => pyr[r]);
+}
+const isComplete = pyr => !!pyr[10];
+
+// ---------------------------------------------------------------- Game state
+let G = null;      // game state
+let T = null;      // current turn (pending actions)
+let mode = "ai";   // "ai", "online" or "hotseat"
+const LEVELS = { easy: "Easy", medium: "Medium", hard: "Hard" };
+let difficulty = "medium";
+try { const d = localStorage.getItem("goPyramidDifficulty"); if (LEVELS[d]) difficulty = d; } catch (e) {}
+let busy = false;
+
+function newGame(m, level) {
+  mode = m;
+  if (level) {
+    difficulty = level;
+    try { localStorage.setItem("goPyramidDifficulty", level); } catch (e) {}
+  }
+  const deck = shuffle(freshDeck());
+  const middle = deck.splice(0, 5);
+  const h = [[], []];
+  for (let i = 0; i < 5; i++) { h[0].push(deck.shift()); h[1].push(deck.shift()); }
+  G = {
+    deck, middle, discard: [],
+    players: [
+      { name: mode === "ai" ? "You" : "Player 1", hand: sortHand(h[0]), pyr: {} },
+      { name: mode === "ai" ? `Computer (${LEVELS[difficulty]})` : "Player 2", hand: sortHand(h[1]), pyr: {} },
+    ],
+    current: 0,
+    round: 1,
+    over: false,
+    ai: { knownMiddle: null, oppStash: false },
+  };
+  document.getElementById("log").innerHTML = "";
+  log(`Round 1 begins.`);
+  startTurn();
+  hideOverlay();
+  render();
+  if (mode === "hotseat") passScreen(0);
+}
+
+function startTurn() {
+  const p = G.players[G.current];
+  T = { hand: p.hand.slice(), pyr: { ...p.pyr }, placed: [], discarded: [], history: [] };
+}
+
+// Which player is shown at the bottom of the screen
+function viewer() { return mode === "ai" ? 0 : mode === "online" ? NET.seat : G.current; }
+
+// ---------------------------------------------------------------- Turn actions
+function canAct() { return G && !G.over && !busy && T && G.current === viewer() && $("overlay").hidden; }
+
+// One tap: put the card on the pyramid if it fits, otherwise discard it.
+function tapCard(i) {
+  if (!canAct()) return;
+  const card = T.hand[i];
+  if (!card) return;
+  T.hand[i] = null; // leave a blank slot where the card was
+  if (canPlace(card.rank, T.pyr)) {
+    T.pyr[card.rank] = card;
+    T.placed.push(card);
+    T.history.push({ type: "place", card, index: i });
+  } else {
+    T.discarded.push(card);
+    T.history.push({ type: "discard", card, index: i });
+  }
+  render();
+}
+
+function revert(entry) {
+  const { type, card } = entry;
+  if (type === "place") {
+    delete T.pyr[card.rank];
+    T.placed.splice(T.placed.indexOf(card), 1);
+  } else {
+    T.discarded.splice(T.discarded.indexOf(card), 1);
+  }
+  T.history.splice(T.history.indexOf(entry), 1);
+  T.hand[entry.index] = card;
+}
+
+function undoLast() {
+  if (!canAct() || !T.history.length) return;
+  revert(T.history[T.history.length - 1]);
+  render();
+}
+
+// Tap a card placed this turn to take it back (and anything resting on it).
+function takeBack(card) {
+  if (!canAct()) return;
+  const remove = [card];
+  for (let k = 0; k < remove.length; k++) {
+    for (const c of T.placed) {
+      if (!remove.includes(c) && (SUPPORTS[c.rank] || []).includes(remove[k].rank)) remove.push(c);
+    }
+  }
+  for (const c of remove) revert(T.history.find(h => h.card === c));
+  render();
+}
+
+function describeMove(name, placed, discarded) {
+  const parts = [];
+  if (placed.length) parts.push(`placed ${placed.map(cardName).join(" ")}`);
+  if (discarded.length) parts.push(`discarded ${discarded.map(cardName).join(" ")}`);
+  return `${name} ${parts.length ? parts.join(", ") : "passed"}.`;
+}
+
+function commitTurn() {
+  if (mode === "online") {
+    G.handLayout = T.hand.slice();
+    sendMove({ type: "play", placed: T.placed.map(c => c.id), discarded: T.discarded.map(c => c.id) });
+    return;
+  }
+  const p = G.players[G.current];
+  if (G.current === viewer()) G.handLayout = T.hand.slice(); // keep blanks visible until the deal
+  p.hand = T.hand.filter(Boolean);
+  p.pyr = T.pyr;
+  G.discard.push(...T.discarded);
+  log(describeMove(p.name, T.placed, T.discarded));
+  afterMove();
+}
+
+function swapMiddle() {
+  if (mode === "online") { sendMove({ type: "swap" }); return; }
+  const p = G.players[G.current];
+  const old = p.hand;
+  p.hand = sortHand(G.middle);
+  G.middle = old;
+  log(`${p.name} swapped hand with the middle.`);
+  // The AI only knows the middle if it put it there itself.
+  G.ai.knownMiddle = G.current === 1 ? old.slice() : null;
+  G.ai.oppStash = G.current === 0;   // middle now holds the human's old hand
+  afterMove();
+}
+
+function afterMove() {
+  if (G.current === 0) {
+    G.current = 1;
+    startTurn();
+    if (mode === "ai") { render(); aiTurn(); }
+    else { render(); passScreen(1); }
+  } else {
+    endRound();
+  }
+}
+
+function drawCard() {
+  if (G.deck.length === 0) {
+    G.deck = shuffle(G.discard);
+    G.discard = [];
+    log("Deck empty: discard pile shuffled into a new deck.");
+  }
+  return G.deck.shift();
+}
+
+function endRound() {
+  G.handLayout = null;
+  for (const p of G.players) {
+    while (p.hand.length < 5) {
+      const c = drawCard();
+      if (!c) break;
+      p.hand.push(c);
+    }
+    sortHand(p.hand);
+  }
+  const done = G.players.map(p => isComplete(p.pyr));
+  if (done[0] || done[1]) {
+    G.over = true;
+    T = null;
+    render();
+    let title;
+    if (done[0] && done[1]) title = "It's a draw!";
+    else if (mode === "ai") title = done[0] ? "You win!" : "The computer wins.";
+    else title = `${G.players[done[0] ? 0 : 1].name} wins!`;
+    log(title);
+    showOverlay(title, `Finished in ${G.round} rounds.`, true);
+    return;
+  }
+  G.round++;
+  G.current = 0;
+  log(`Round ${G.round}: hands refilled to 5.`);
+  startTurn();
+  render();
+  if (mode === "hotseat") passScreen(0);
+}
+
+// ---------------------------------------------------------------- Computer player
+// Easy: place whatever fits, discard everything else, never swap.
+function easyDecide() {
+  const me = G.players[1];
+  const p = { ...me.pyr };
+  return me.hand.map(c => {
+    if (canPlace(c.rank, p)) { p[c.rank] = c; return "put"; }
+    return "throw";
+  });
+}
+
+// Medium: port of "keepNextRow" + middle-swapping logic from AI/Naive.hs.
+function numPlayable(hand, pyr) {
+  const p = { ...pyr };
+  let n = 0;
+  for (const c of hand) if (canPlace(c.rank, p)) { p[c.rank] = c; n++; }
+  return n;
+}
+function numNotIn(hand, pyr) {
+  return hand.filter(c => c.rank <= 10 && !pyr[c.rank]).length;
+}
+function keepNextRow(hand, pyr) {
+  const p = { ...pyr };
+  const keeps = new Set();
+  const acts = [];
+  const has = r => !!p[r];
+  const needSoon = r => {
+    if (keeps.has(r) || has(r)) return false;
+    const s = SUPPORTS[r];
+    return !!s && (has(s[0]) || has(s[1]));
+  };
+  for (const c of hand) {
+    if (canPlace(c.rank, p)) { p[c.rank] = c; acts.push("put"); }
+    else if (needSoon(c.rank)) { keeps.add(c.rank); acts.push("keep"); }
+    else acts.push("throw");
+  }
+  return acts;
+}
+function aiDecide() {
+  if (difficulty === "easy") return easyDecide();
+  if (difficulty === "hard") return hardDecide();
+  return mediumDecide();
+}
+function mediumDecide() {
+  const me = G.players[1];
+  const acts = keepNextRow(me.hand, me.pyr);
+  const noPuts = !acts.includes("put");
+  const known = G.ai.knownMiddle;
+  if (known) {
+    if (numPlayable(known, me.pyr) > numPlayable(me.hand, me.pyr)) return "swap";
+    if (noPuts && numNotIn(known, me.pyr) < numNotIn(me.hand, me.pyr)) return "swap";
+  } else if (noPuts && numNotIn(me.hand, me.pyr) > 2) {
+    return "swap";
+  }
+  return acts;
+}
+// Hard: discounted CFR strategy trained offline (web/cfr/train.mjs).
+// Keys must match swapKey()/keepKey() in web/cfr/engine.mjs exactly: suits are
+// ignored, J/Q/K are one worthless rank, and a hand is its set of useful ranks.
+// Each turn is two decisions: swap-or-play, then which unplaceable cards to keep.
+const HARD_SWAP = new Map(), HARD_KEEP = new Map();
+const hardAvailable = typeof window.GO_PYRAMID_HARD_POLICY === "string";
+if (hardAvailable && window.GO_PYRAMID_HARD_POLICY) {
+  for (const kv of window.GO_PYRAMID_HARD_POLICY.split(",")) {
+    const [k, a] = kv.slice(1).split(":");
+    (kv[0] === "s" ? HARD_SWAP : HARD_KEEP).set(parseInt(k, 36), parseInt(a, 36));
+  }
+}
+const rbit = r => 1 << (r - 1);
+function popcount(x) { let c = 0; while (x) { x &= x - 1; c++; } return c; }
+function maskOf(pyr) { let m = 0; for (let r = 1; r <= 10; r++) if (pyr[r]) m |= rbit(r); return m; }
+function rankSetOf(cards, m) { let s = 0; for (const c of cards) if (c.rank <= 10) s |= rbit(c.rank); return s & ~m; }
+function canPlaceBits(r, m) {
+  if (r > 10 || (m & rbit(r))) return false;
+  const s = SUPPORTS[r];
+  return !s || ((m & rbit(s[0])) !== 0 && (m & rbit(s[1])) !== 0);
+}
+function chainBits(set, m) {
+  let placed = 0;
+  for (let r = 1; r <= 10; r++) if ((set & rbit(r)) && canPlaceBits(r, m | placed)) placed |= rbit(r);
+  return placed;
+}
+function hardFeatures(me, opp, known, oppStash) {
+  const m = maskOf(me.pyr);
+  const hs = rankSetOf(me.hand, m);
+  const placed = chainBits(hs, m);
+  const oc = popcount(maskOf(opp.pyr));
+  return {
+    m, placed, rem: hs & ~placed,
+    ob: oc <= 5 ? 0 : oc <= 8 ? 1 : 2,
+    mf: known ? 1 + popcount(chainBits(rankSetOf(known, m), m)) : oppStash ? 7 : 0,
+  };
+}
+function hardKeys(me, opp, known, oppStash) {
+  const f = hardFeatures(me, opp, known, oppStash);
+  return {
+    swap: ((((1 * 1024 + f.m) * 1024 + f.placed) * 8 + popcount(f.rem)) * 8 + f.mf) * 4 + f.ob,
+    keep: ((1 * 1024 + (f.m | f.placed)) * 1024 + f.rem) * 4 + f.ob,
+    ...f,
+  };
+}
+function hardDecide() {
+  const me = G.players[1];
+  const k = hardKeys(me, G.players[0], G.ai.knownMiddle, G.ai.oppStash);
+  const medium = mediumDecide();   // fallback for infosets not in the table
+  const sa = HARD_SWAP.get(k.swap);
+  const swap = sa === undefined ? medium === "swap" : sa === 0;
+  if (swap) return "swap";
+  let keep;
+  const ka = HARD_KEEP.get(k.keep);
+  if (ka === undefined) {
+    // medium's keep rule (keepNextRow), even if medium itself wanted to swap
+    const acts = keepNextRow(me.hand, me.pyr);
+    keep = 0;
+    me.hand.forEach((c, i) => { if (acts[i] === "keep") keep |= rbit(c.rank); });
+  } else {
+    keep = 0;
+    let j = 0;
+    for (let r = 1; r <= 10; r++) {
+      if (k.rem & rbit(r)) { if ((ka >> j) & 1) keep |= rbit(r); j++; }
+    }
+  }
+  let usedP = 0, usedK = 0;
+  return me.hand.map(c => {
+    const b = c.rank <= 10 ? rbit(c.rank) : 0;
+    if ((k.placed & b) && !(usedP & b)) { usedP |= b; return "put"; }
+    if ((keep & b) && !(usedK & b)) { usedK |= b; return "keep"; }
+    return "throw";
+  });
+}
+
+function aiTurn() {
+  busy = true;
+  render();
+  setTimeout(() => {
+    busy = false;
+    const d = aiDecide();
+    if (d === "swap") { swapMiddle(); return; }
+    const hand = T.hand.slice();
+    T.hand = [];
+    hand.forEach((c, i) => {
+      if (d[i] === "put") { T.pyr[c.rank] = c; T.placed.push(c); }
+      else if (d[i] === "throw") T.discarded.push(c);
+      else T.hand.push(c);
+    });
+    commitTurn();
+  }, 350);
+}
+
+// ---------------------------------------------------------------- Rendering
+const $ = id => document.getElementById(id);
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== undefined) e.textContent = text;
+  return e;
+}
+function cardEl(c) {
+  const e = el("div", "card" + (isRed(c) ? " red" : "") + (c.rank > 10 ? " face" : ""));
+  e.append(el("span", "rank", rankName(c.rank)), el("span", "suit", c.suit));
+  e.setAttribute("aria-label", cardName(c));
+  return e;
+}
+const backEl = () => el("div", "card back");
+
+function pyramidEl(pyr, { flipped, pending, onPending }) {
+  const wrap = el("div", "area pyr");
+  wrap.style.gap = "4px";
+  wrap.style.margin = "0";
+  const rows = flipped ? ROWS.slice().reverse() : ROWS;
+  for (const row of rows) {
+    const r = el("div", "row");
+    for (const rank of row) {
+      if (pyr[rank]) {
+        const c = cardEl(pyr[rank]);
+        if (pending && pending.includes(pyr[rank])) {
+          c.classList.add("pending");
+          c.title = "Tap to take back";
+          c.onclick = () => onPending(pyr[rank]);
+        }
+        r.append(c);
+      } else {
+        r.append(el("div", "slot", rankName(rank)));
+      }
+    }
+    wrap.append(r);
+  }
+  return wrap;
+}
+
+function render() {
+  if (!G) return;
+  const me = viewer(), opp = 1 - me;
+  const myTurn = !G.over && !busy && G.current === me && T;
+  const meP = G.players[me], oppP = G.players[opp];
+
+  // When it's my turn, show my pending state; otherwise my committed state.
+  const myPyr = myTurn ? T.pyr : meP.pyr;
+  const myHand = (myTurn ? T.hand : (G.handLayout || meP.hand)).slice();
+  while (myHand.length < 5) myHand.push(null);
+
+  $("oppLabel").textContent = oppP.name;
+  $("myLabel").textContent = meP.name + (myTurn ? " — your turn" : "");
+
+  const oh = $("oppHand"); oh.innerHTML = "";
+  if (G.over) oppP.hand.forEach(c => oh.append(cardEl(c)));
+  else oppP.hand.forEach(() => oh.append(backEl()));
+
+  // Opponent's pyramid: apex away from the middle (at the top).
+  $("oppPyramid").replaceChildren(pyramidEl(oppP.pyr, { flipped: true }));
+
+  // My pyramid: base next to the middle, apex toward me.
+  $("myPyramid").replaceChildren(pyramidEl(myPyr, {
+    flipped: false,
+    pending: myTurn ? T.placed : null,
+    onPending: takeBack,
+  }));
+
+  const hand = $("myHand"); hand.innerHTML = "";
+  myHand.forEach((c, i) => {
+    if (!c) {
+      const s = el("div", "slot empty");
+      const h = myTurn && T.history.find(x => x.index === i);
+      if (h) {
+        s.classList.add(h.type === "place" ? "was-placed" : "was-discarded");
+        s.title = `Tap to take back ${cardName(h.card)}`;
+        s.onclick = () => takeBack(h.card);
+      }
+      hand.append(s);
+      return;
+    }
+    const e = cardEl(c);
+    if (myTurn) {
+      const ok = canPlace(c.rank, T.pyr);
+      if (ok) e.classList.add("playable");
+      e.title = (ok ? "Place on pyramid" : "Discard") + ` (${i + 1})`;
+      e.onclick = () => tapCard(i);
+    }
+    hand.append(e);
+  });
+
+  const mid = $("middle"); mid.innerHTML = "";
+  G.middle.forEach(() => mid.append(backEl()));
+
+  $("deckCount").textContent = `Deck: ${G.deck.length}`;
+  const dt = $("discardTop"); dt.innerHTML = "";
+  const pile = myTurn ? G.discard.concat(T.discarded) : G.discard;
+  if (pile.length) {
+    const top = pile[pile.length - 1];
+    const e = cardEl(top);
+    if (myTurn && T.discarded.includes(top)) {
+      e.classList.add("pending");
+      e.title = "Tap to take back";
+      e.onclick = () => takeBack(top);
+    }
+    dt.append(e);
+  }
+  $("discardCount").textContent = `(${pile.length})`;
+
+  const acted = myTurn && T.history.length > 0;
+  $("undoBtn").disabled = !acted;
+  $("swapBtn").disabled = !myTurn || acted;
+  $("endBtn").disabled = !myTurn;
+  $("endBtn").textContent = `Hit me dealer ${myHand.filter(c => !c).length}`;
+  $("endBtn").title = "End your turn (Enter)";
+
+  let status = "";
+  if (G.over) status = "Game over.";
+  else if (busy) status = mode === "online" ? "Sending…" : "Computer is thinking…";
+  else if (myTurn) {
+    status = acted ? "Tap more cards, or hit the dealer."
+      : `Round ${G.round}. Tap a card: ☥ builds your pyramid, ✕ discards.`;
+  } else if (mode === "online") status = `Round ${G.round}. Waiting for ${NET.view.oppName}…`;
+  $("status").textContent = status;
+}
+
+function log(msg) {
+  const l = $("log");
+  l.append(el("div", "", msg));
+  l.scrollTop = l.scrollHeight;
+}
+
+// ---------------------------------------------------------------- Overlays
+function showOverlay(title, text, withModes) {
+  $("ovTitle").textContent = title;
+  $("ovText").textContent = text;
+  const o = $("ovOpts"); o.innerHTML = "";
+  if (withModes) {
+    for (const [lvl, name] of Object.entries(LEVELS)) {
+      const b = el("button", lvl === difficulty ? "primary" : "", name);
+      b.onclick = () => newGame("ai", lvl);
+      if (lvl === "hard" && !hardAvailable) { b.disabled = true; b.title = "ai-hard-policy.js not found"; }
+      o.append(b);
+    }
+    if (G && G.over && mode !== "online") { const c = el("button", "", "View board"); c.onclick = hideOverlay; o.append(c); }
+    if (NET.available) {
+      const row = el("div", "online-row");
+      const input = el("input");
+      input.id = "nameInput";
+      input.placeholder = "Your name";
+      input.maxLength = 20;
+      try { input.value = localStorage.getItem("goPyramidName") || ""; } catch (e) {}
+      const b = el("button", "", "Play a friend online");
+      b.id = "onlineBtn";
+      b.onclick = goOnline;
+      row.append(input, b);
+      o.append(row);
+    }
+  }
+  $("overlay").hidden = false;
+}
+
+// ---------------------------------------------------------------- Online play (web/server.mjs)
+// The server owns the deck, the middle and both hands; we only ever receive our
+// own view, and send moves as card ids.
+const NET = { available: false, token: null, seat: 0, es: null, view: null, overShown: null, unloading: false };
+addEventListener("pagehide", () => { NET.unloading = true; });
+const tokenKey = () => "goPyramidToken:" + location.host;
+
+async function api(path, body) {
+  const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || r.statusText);
+  return j;
+}
+
+function message(title, text, buttons) {
+  $("ovTitle").textContent = title;
+  $("ovText").textContent = text;
+  const o = $("ovOpts"); o.innerHTML = "";
+  buttons.forEach(([label, fn, primary]) => { const b = el("button", primary ? "primary" : "", label); b.onclick = fn; o.append(b); });
+  $("overlay").hidden = false;
+}
+
+async function goOnline() {
+  let name = "", token = null;
+  try {
+    const input = $("nameInput");
+    if (input) { name = input.value.trim(); localStorage.setItem("goPyramidName", name); }
+    else name = localStorage.getItem("goPyramidName") || "";
+    token = localStorage.getItem(tokenKey());
+  } catch (e) {}
+  let j;
+  try { j = await api("/api/join", { token, name }); }
+  catch (e) {
+    message("Can't join", e.message, [["Play the computer", backToMenu, true]]);
+    return;
+  }
+  NET.token = j.token;
+  NET.seat = j.seat;
+  try { localStorage.setItem(tokenKey(), j.token); } catch (e) {}
+  mode = "online";
+  T = null;
+  G = null;
+  NET.overShown = null;
+  $("log").innerHTML = "";
+  hideOverlay();
+  connect();
+}
+
+function connect() {
+  if (NET.es) NET.es.close();
+  const es = new EventSource("/api/events?token=" + encodeURIComponent(NET.token));
+  NET.es = es;
+  es.onmessage = e => applyView(JSON.parse(e.data));
+  es.onerror = () => {
+    // A closed stream means the server refused us (e.g. it restarted): join
+    // again. The server gives a new seat if it doesn't know our token.
+    if (es.readyState === EventSource.CLOSED && mode === "online" && !NET.unloading) setTimeout(goOnline, 1500);
+  };
+}
+
+async function sendMove(move) {
+  busy = true;
+  render();
+  try { await api("/api/move", { token: NET.token, move }); }
+  catch (e) { busy = false; log("⚠ " + e.message); render(); }
+}
+
+function backToMenu() {
+  if (NET.es) NET.es.close();
+  NET.es = null;
+  mode = "ai";
+  G = null; T = null; busy = false;
+  showOverlay("Go Pyramid", "Build your pyramid from A up to 10 before your opponent does. Choose a difficulty:", true);
+}
+
+async function leaveOnline() {
+  try { await api("/api/leave", { token: NET.token }); } catch (e) {}
+  try { localStorage.removeItem(tokenKey()); } catch (e) {}
+  backToMenu();
+}
+
+async function rematch(force) {
+  try { await api("/api/new", { token: NET.token, force }); }
+  catch (e) { message("Not yet", e.message, [["OK", () => { hideOverlay(); render(); }, true]]); }
+}
+
+function onlineMenu() {
+  const v = NET.view;
+  const running = v && v.started && !v.over;
+  message("Online game", running ? "Start over? The current game will be abandoned." : "Play again with the same opponent?", [
+    [running ? "Start a new game" : "Play again", () => rematch(running), true],
+    ["Back to the board", () => { hideOverlay(); render(); }],
+    ["Leave and play the computer", leaveOnline],
+  ]);
+}
+
+// The link to send: the public tunnel link if there is one. "localhost" only
+// works on this computer, so never suggest it.
+async function showInvite(v) {
+  let info = {};
+  try { info = await (await fetch("/api/hello")).json(); } catch (e) {}
+  if (NET.view !== v) return;   // something newer arrived meanwhile
+  const local = /^(localhost|127\.|\[::1\])/.test(location.hostname);
+  const link = info.publicUrl || (!local ? location.origin + "/" : info.lanUrl);
+  let text = link ? `Send your friend this link: ${link} — they open it and click "Play a friend online".` : "";
+  if (!info.publicUrl && local) {
+    text += (link ? " That link only works on your Wi-Fi. " : "") +
+      (info.tunnel ? "The public link is still starting; this updates in a moment."
+        : "For a friend anywhere, restart the server with: node web/server.mjs --tunnel");
+    if (info.tunnel) setTimeout(() => { if (NET.view === v) showInvite(v); }, 3000);
+  }
+  const buttons = [];
+  if (link) buttons.push(["Copy link", () => { navigator.clipboard && navigator.clipboard.writeText(link); }, true]);
+  buttons.push(["Leave and play the computer", leaveOnline]);
+  message(v.oppJoined ? "Starting…" : "Waiting for your opponent", text, buttons);
+}
+
+function applyView(v) {
+  NET.view = v;
+  if (!v.started) {
+    G = null; T = null;
+    showInvite(v);
+    return;
+  }
+  const me = v.seat, opp = 1 - me;
+  const toPyr = list => Object.fromEntries(list.map(c => [c.rank, c]));
+  const prev = G;
+  const sameRound = prev && prev.game === v.game && prev.round === v.round;
+  G = {
+    turnId: v.turnId, game: v.game,
+    deck: { length: v.deckCount },
+    middle: new Array(v.middleCount).fill(0),
+    discard: v.discardTop ? new Array(v.discardCount).fill(v.discardTop) : [],
+    players: [],
+    current: v.current, round: v.round, over: v.over,
+    ai: { knownMiddle: null },
+    handLayout: sameRound ? prev.handLayout : null,
+  };
+  G.players[me] = { name: v.you || "You", hand: v.hand, pyr: toPyr(v.pyr[me]) };
+  G.players[opp] = {
+    name: v.oppName + (v.oppOnline ? "" : " (offline)"),
+    hand: v.over ? v.oppHand : new Array(v.oppHandCount).fill(0),
+    pyr: toPyr(v.pyr[opp]),
+  };
+  busy = false;
+  if (v.current === me && !v.over) {
+    if (!T || !prev || prev.turnId !== v.turnId) startTurn();
+  } else T = null;
+
+  const l = $("log"); l.innerHTML = "";
+  v.log.forEach(m => l.append(el("div", "", m)));
+  l.scrollTop = l.scrollHeight;
+
+  if (v.over && NET.overShown !== v.game) {
+    NET.overShown = v.game;
+    const title = v.result === "win" ? "You win!" : v.result === "draw" ? "It's a draw!" : `${v.oppName} wins.`;
+    render();
+    message(title, `Finished in ${v.round} rounds.`, [
+      ["Play again", () => rematch(false), true],
+      ["View board", () => { hideOverlay(); render(); }],
+      ["Leave and play the computer", leaveOnline],
+    ]);
+    return;
+  }
+  if (!v.over) {
+    const t = $("ovTitle").textContent;
+    if (!$("overlay").hidden && (t.startsWith("Waiting") || t.startsWith("Starting") || /wins|win!|draw/.test(t))) hideOverlay();
+  }
+  render();
+}
+function hideOverlay() { $("overlay").hidden = true; }
+function passScreen(p) {
+  $("ovTitle").textContent = `${G.players[p].name}'s turn`;
+  $("ovText").textContent = `Pass the device to ${G.players[p].name}. Hands stay hidden until you tap Ready.`;
+  const o = $("ovOpts"); o.innerHTML = "";
+  const b = el("button", "primary", "Ready");
+  b.onclick = () => { hideOverlay(); render(); };
+  o.append(b);
+  $("overlay").hidden = false;
+}
+
+// ---------------------------------------------------------------- Wiring
+$("undoBtn").onclick = undoLast;
+$("swapBtn").onclick = () => { if (canAct() && !T.history.length) swapMiddle(); };
+$("endBtn").onclick = () => { if (canAct()) commitTurn(); };
+document.addEventListener("keydown", e => {
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  if (!$("overlay").hidden) {
+    if (e.key === "Enter") {
+      const b = e.target.id === "nameInput" ? $("onlineBtn")
+        : $("ovOpts").querySelector("button.primary") || $("ovOpts").querySelector("button");
+      if (b) { e.preventDefault(); b.click(); }
+    }
+    return;
+  }
+  if (e.key >= "1" && e.key <= "5") tapCard(Number(e.key) - 1);
+  else if (e.key === "Enter" || e.key === " ") { e.preventDefault(); $("endBtn").click(); }
+  else if (e.key === "z" || e.key === "Z" || e.key === "Backspace") { e.preventDefault(); undoLast(); }
+  else if (e.key === "s" || e.key === "S") $("swapBtn").click();
+});
+$("newGameBtn").onclick = () => mode === "online" ? onlineMenu() : showOverlay("New game", "Choose the computer's difficulty.", true);
+
+showOverlay("Go Pyramid", "Build your pyramid from A up to 10 before the computer does. Choose a difficulty:", true);
+
+// Served by web/server.mjs? Then offer online play (and rejoin after a refresh).
+if (location.protocol.startsWith("http")) {
+  fetch("/api/hello").then(r => r.ok ? r.json() : null).then(j => {
+    if (!j || j.game !== "go-pyramid") return;
+    NET.available = true;
+    let token = null;
+    try { token = localStorage.getItem(tokenKey()); } catch (e) {}
+    if (token) goOnline();
+    else showOverlay("Go Pyramid", "Play the computer, or a friend online.", true);
+  }).catch(() => {});
+}
+</script>
+</body>
+</html>
