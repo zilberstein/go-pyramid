@@ -116,7 +116,16 @@
   }
   .hand .card:active { transform: translateY(-4px) scale(0.96); }
   .pyr .card.pending, .pile .card.pending { cursor: pointer; }
-  .kbd { opacity: 0.7; font-size: 12px; }
+  .hand .slot.empty {
+    background: rgba(243,210,122,0.06); opacity: 1; box-shadow: none;
+    border: 2px dashed rgba(243,210,122,0.45);
+  }
+  .hand .slot.empty.was-placed, .hand .slot.empty.was-discarded { cursor: pointer; }
+  .hand .slot.empty.was-placed::after, .hand .slot.empty.was-discarded::after {
+    font-size: 18px; color: rgba(243,210,122,0.5);
+  }
+  .hand .slot.empty.was-placed::after { content: "▲"; }
+  .hand .slot.empty.was-discarded::after { content: "✕"; }
   .card.pending { outline: 3px dashed var(--accent); outline-offset: 1px; }
   .hand .card { cursor: pointer; transition: transform 0.12s; }
   .hand .card.playable::after {
@@ -309,14 +318,14 @@ function tapCard(i) {
   if (!canAct()) return;
   const card = T.hand[i];
   if (!card) return;
-  T.hand.splice(i, 1);
+  T.hand[i] = null; // leave a blank slot where the card was
   if (canPlace(card.rank, T.pyr)) {
     T.pyr[card.rank] = card;
     T.placed.push(card);
-    T.history.push({ type: "place", card });
+    T.history.push({ type: "place", card, index: i });
   } else {
     T.discarded.push(card);
-    T.history.push({ type: "discard", card });
+    T.history.push({ type: "discard", card, index: i });
   }
   render();
 }
@@ -330,8 +339,7 @@ function revert(entry) {
     T.discarded.splice(T.discarded.indexOf(card), 1);
   }
   T.history.splice(T.history.indexOf(entry), 1);
-  T.hand.push(card);
-  sortHand(T.hand);
+  T.hand[entry.index] = card;
 }
 
 function undoLast() {
@@ -362,7 +370,8 @@ function describeMove(name, placed, discarded) {
 
 function commitTurn() {
   const p = G.players[G.current];
-  p.hand = T.hand;
+  if (G.current === viewer()) G.handLayout = T.hand.slice(); // keep blanks visible until the deal
+  p.hand = T.hand.filter(Boolean);
   p.pyr = T.pyr;
   G.discard.push(...T.discarded);
   log(describeMove(p.name, T.placed, T.discarded));
@@ -401,6 +410,7 @@ function drawCard() {
 }
 
 function endRound() {
+  G.handLayout = null;
   for (const p of G.players) {
     while (p.hand.length < 5) {
       const c = drawCard();
@@ -538,7 +548,8 @@ function render() {
 
   // When it's my turn, show my pending state; otherwise my committed state.
   const myPyr = myTurn ? T.pyr : meP.pyr;
-  const myHand = myTurn ? T.hand : meP.hand;
+  const myHand = (myTurn ? T.hand : (G.handLayout || meP.hand)).slice();
+  while (myHand.length < 5) myHand.push(null);
 
   $("oppLabel").textContent = oppP.name;
   $("myLabel").textContent = meP.name + (myTurn ? " — your turn" : "");
@@ -559,6 +570,17 @@ function render() {
 
   const hand = $("myHand"); hand.innerHTML = "";
   myHand.forEach((c, i) => {
+    if (!c) {
+      const s = el("div", "slot empty");
+      const h = myTurn && T.history.find(x => x.index === i);
+      if (h) {
+        s.classList.add(h.type === "place" ? "was-placed" : "was-discarded");
+        s.title = `Tap to take back ${cardName(h.card)}`;
+        s.onclick = () => takeBack(h.card);
+      }
+      hand.append(s);
+      return;
+    }
     const e = cardEl(c);
     if (myTurn) {
       const ok = canPlace(c.rank, T.pyr);
@@ -591,7 +613,7 @@ function render() {
   $("undoBtn").disabled = !acted;
   $("swapBtn").disabled = !myTurn || acted;
   $("endBtn").disabled = !myTurn;
-  $("endBtn").textContent = `Hit me dealer ${5 - myHand.length}`;
+  $("endBtn").textContent = `Hit me dealer ${myHand.filter(c => !c).length}`;
   $("endBtn").title = "End your turn (Enter)";
 
   let status = "";
