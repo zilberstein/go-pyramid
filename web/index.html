@@ -67,6 +67,19 @@
   .pile .card .rank, .pile .card .suit { font-size: 14px; }
   .controls { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 8px; }
   .status { text-align: center; min-height: 22px; font-size: 15px; margin: 6px 0; }
+  .dock {
+    position: sticky; bottom: 0; z-index: 5; margin: 8px -16px 0; padding: 10px 16px 12px;
+    background: var(--felt-dark); border-top: 1px solid rgba(255,255,255,0.18);
+    box-shadow: 0 -6px 16px rgba(0,0,0,0.3);
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+  }
+  .dock .hand { padding-top: 10px; }
+  .dock .status { margin: 0; }
+  .dock .controls { margin: 0; }
+  .pyr .card, .pyr .slot { width: 40px; height: 56px; border-radius: 6px; }
+  .pyr .card .rank, .pyr .card .suit { font-size: 16px; }
+  .pyr .slot { font-size: 14px; }
+  .pyr .row { gap: 4px; }
   .log { font-size: 13px; color: var(--muted); max-height: 120px; overflow-y: auto; margin-top: 12px; padding: 8px; background: rgba(0,0,0,0.15); border-radius: 8px; }
   .log div { padding: 2px 0; }
   .overlay {
@@ -109,17 +122,19 @@
 
   <section class="area" id="myArea">
     <div id="myPyramid"></div>
-    <div class="label" id="myLabel">You</div>
-    <div class="row hand" id="myHand"></div>
   </section>
 
-  <div class="status" id="status"></div>
-  <div class="controls">
-    <button id="placeBtn" disabled>Place</button>
-    <button id="discardBtn" disabled>Discard</button>
-    <button id="undoBtn" disabled>Undo turn</button>
-    <button id="swapBtn">Swap hand with middle</button>
-    <button id="endBtn" class="primary">End turn</button>
+  <div class="dock">
+    <div class="label" id="myLabel">You</div>
+    <div class="row hand" id="myHand"></div>
+    <div class="status" id="status"></div>
+    <div class="controls">
+      <button id="placeBtn" disabled>Place</button>
+      <button id="discardBtn" disabled>Discard</button>
+      <button id="undoBtn" disabled>Undo turn</button>
+      <button id="swapBtn" disabled>Swap hand with middle</button>
+      <button id="endBtn" class="primary" disabled>End turn</button>
+    </div>
   </div>
 
   <div class="log" id="log"></div>
@@ -202,6 +217,7 @@ function newGame(m) {
   log(`Round 1 begins.`);
   startTurn();
   hideOverlay();
+  render();
   if (mode === "hotseat") passScreen(0);
 }
 
@@ -391,8 +407,8 @@ function cardEl(c) {
 const backEl = () => el("div", "card back");
 
 function pyramidEl(pyr, { flipped, pending, legalRank, onSlot }) {
-  const wrap = el("div", "area");
-  wrap.style.gap = "6px";
+  const wrap = el("div", "area pyr");
+  wrap.style.gap = "4px";
   wrap.style.margin = "0";
   const rows = flipped ? ROWS.slice().reverse() : ROWS;
   for (const row of rows) {
