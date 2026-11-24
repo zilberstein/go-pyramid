@@ -133,7 +133,7 @@
       <button id="discardBtn" disabled>Discard</button>
       <button id="undoBtn" disabled>Undo turn</button>
       <button id="swapBtn" disabled>Swap hand with middle</button>
-      <button id="endBtn" class="primary" disabled>End turn</button>
+      <button id="endBtn" class="primary" disabled>Hit me dealer 0</button>
     </div>
   </div>
 
@@ -487,6 +487,7 @@ function render() {
   $("undoBtn").disabled = !acted;
   $("swapBtn").disabled = !myTurn || acted;
   $("endBtn").disabled = !myTurn;
+  $("endBtn").textContent = `Hit me dealer ${5 - myHand.length}`;
 
   let status = "";
   if (G.over) status = "Game over.";
