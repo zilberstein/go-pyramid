@@ -94,7 +94,7 @@ function sample(p, n, r) {
 // ---------------------------------------------------------------- policies
 function curSwap(st) {
   const s = st.toMove;
-  const e = SW.get(swapKey(s, st.p[s], st.p[1 - s]));
+  const e = SW.get(swapKey(s, st.p[s], st.p[1 - s], st));
   if (!e) return mediumSwap(st);
   strategy(e, tmp);
   return sample(tmp, 2, st.rng) === 0;
@@ -102,7 +102,7 @@ function curSwap(st) {
 function curKeep(st) {
   const s = st.toMove;
   if (numKeepActions(st.p[s]) === 1) return 0;
-  const e = KP.get(keepKey(s, st.p[s], st.p[1 - s]));
+  const e = KP.get(keepKey(s, st.p[s], st.p[1 - s], st));
   if (!e) return mediumKeep(st);
   strategy(e, tmp);
   return sample(tmp, e.R.length, st.rng);
@@ -115,11 +115,11 @@ function currentPolicy(st) {
 // Purified average strategy: what ships in the browser.
 function averagePolicy(st) {
   const s = st.toMove, me = st.p[s], op = st.p[1 - s];
-  const es = SW.get(swapKey(s, me, op));
+  const es = SW.get(swapKey(s, me, op, st));
   const swap = es && es.N >= MIN_VISITS ? bestAverage(es) === 0 : mediumSwap(st);
   if (swap) return 0;
   if (numKeepActions(me) === 1) return 1;
-  const ek = KP.get(keepKey(s, me, op));
+  const ek = KP.get(keepKey(s, me, op, st));
   return 1 + (ek && ek.N >= MIN_VISITS ? bestAverage(ek) : mediumKeep(st));
 }
 
@@ -154,7 +154,7 @@ function update(e, n) {
 }
 
 function branchSwap(st, seat, t) {
-  const e = getEntry(SW, swapKey(seat, st.p[seat], st.p[1 - seat]), 2, mediumSwap(st) ? 0 : 1, t);
+  const e = getEntry(SW, swapKey(seat, st.p[seat], st.p[1 - seat], st), 2, mediumSwap(st) ? 0 : 1, t);
   const crn = (rng() * 4294967296) >>> 0;
   for (let a = 0; a < 2; a++) {
     const c = clone(st, makeRng(crn));
@@ -167,7 +167,7 @@ function branchSwap(st, seat, t) {
 
 function branchKeep(st, seat, t) {
   const n = numKeepActions(st.p[seat]);
-  const e = getEntry(KP, keepKey(seat, st.p[seat], st.p[1 - seat]), n, mediumKeep(st), t);
+  const e = getEntry(KP, keepKey(seat, st.p[seat], st.p[1 - seat], st), n, mediumKeep(st), t);
   const crn = (rng() * 4294967296) >>> 0;
   for (let a = 0; a < n; a++) {
     const c = clone(st, makeRng(crn));

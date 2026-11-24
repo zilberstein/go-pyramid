@@ -61,24 +61,84 @@ export function midFeature(me) {
   return me.oppStash ? 7 : 0;
 }
 
+// Card counting. live[r] = copies of rank r this player has not seen: 4 minus
+// copies in its hand, in either pyramid, in the discard pile (public), and in a
+// middle it knows. Unseen copies are in the deck, the opponent's hand or an
+// unknown middle. A reshuffle puts the discard pile back into the deck, so
+// those copies become live again.
+export function liveCounts(st, me, opp) {
+  const live = new Int8Array(11).fill(4);
+  for (const r of me.hand) if (r <= 10) live[r]--;
+  for (let r = 1; r <= 10; r++) {
+    if (me.mask & bit(r)) live[r]--;
+    if (opp.mask & bit(r)) live[r]--;
+  }
+  for (const r of st.discard) if (r <= 10) live[r]--;
+  if (me.known) for (const r of me.known) if (r <= 10) live[r]--;
+  return live;
+}
+
+// Fewer than this many cards left in the deck = a reshuffle is near.
+export const NEAR_SHUFFLE = 8;
+const nearShuffle = st => (st.deck.length - st.dp <= NEAR_SHUFFLE ? 1 : 0);
+
 // Each turn is two decisions, each with its own infoset.
 //
 // 1. Swap or play.  Key: seat, pyramid, which ranks I'd place now, how many other
-//    useful cards I hold, middle knowledge, opponent progress.
-export function swapKey(seat, me, opp) {
+//    useful cards I hold, middle knowledge, opponent progress, how many ranks I
+//    still need that have no live copies (0/1/2+), and whether a reshuffle is near.
+export const SWAP_DIV = 1024 * 1024 * 8 * 8 * 4 * 3 * 2;
+export function swapKey(seat, me, opp, st) {
   const hs = rankSet(me.hand, me.mask);
   const placed = chain(hs, me.mask);
   const nRem = popcount(hs & ~placed);
-  return ((((seat * 1024 + me.mask) * 1024 + placed) * 8 + nRem) * 8 + midFeature(me)) * 4 + oppBucket(opp.mask);
+  const live = liveCounts(st, me, opp);
+  let dead = 0;
+  for (let r = 1; r <= 10; r++) if (!(me.mask & bit(r)) && !(hs & bit(r)) && live[r] === 0) dead++;
+  let k = me.mask;
+  k = k * 1024 + placed;
+  k = k * 8 + nRem;
+  k = k * 8 + midFeature(me);
+  k = k * 4 + oppBucket(opp.mask);
+  k = k * 3 + Math.min(dead, 2);
+  k = k * 2 + nearShuffle(st);
+  return seat * SWAP_DIV + k;
 }
 
 // 2. Which cards that can't be placed yet to keep.  Key: seat, pyramid after
-//    placing, the set of unplaceable useful ranks, opponent progress.
+//    placing, the set of unplaceable useful ranks, opponent progress, which of the
+//    ranks those cards are still waiting on have at most one live copy, and
+//    whether a reshuffle is near.
 //    (Many different hands lead to the same key, so samples pool together.)
-export function keepKey(seat, me, opp) {
+export const KEEP_DIV = 1024 * 1024 * 4 * 1024 * 2;
+export function keepKey(seat, me, opp, st) {
   const hs = rankSet(me.hand, me.mask);
   const placed = chain(hs, me.mask);
-  return ((seat * 1024 + (me.mask | placed)) * 1024 + (hs & ~placed)) * 4 + oppBucket(opp.mask);
+  const after = me.mask | placed;
+  const rem = hs & ~placed;
+  // every missing prerequisite of the cards I might keep (not placed, not in hand)
+  let need = 0;
+  const stack = [];
+  for (let r = 1; r <= 10; r++) if (rem & bit(r)) stack.push(r);
+  while (stack.length) {
+    const s = SUP[stack.pop()];
+    if (!s) continue;
+    for (const q of s) {
+      if ((after & bit(q)) || (need & bit(q))) continue;
+      need |= bit(q);
+      stack.push(q);
+    }
+  }
+  need &= ~hs;
+  const live = liveCounts(st, me, opp);
+  let scarce = 0;
+  for (let r = 1; r <= 10; r++) if ((need & bit(r)) && live[r] <= 1) scarce |= bit(r);
+  let k = after;
+  k = k * 1024 + rem;
+  k = k * 4 + oppBucket(opp.mask);
+  k = k * 1024 + scarce;
+  k = k * 2 + nearShuffle(st);
+  return seat * KEEP_DIV + k;
 }
 
 // Undecided ranks: useful cards that cannot be placed this turn.
