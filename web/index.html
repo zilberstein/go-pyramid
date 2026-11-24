@@ -171,7 +171,12 @@
   .overlay h2::before { content: "☥ "; color: var(--gold); }
   .overlay h2::after { content: " ☥"; color: var(--gold); }
   .overlay p { max-width: 460px; color: var(--muted); margin: 0; line-height: 1.5; }
-  .overlay .opts { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+  .overlay .opts { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; max-width: 520px; }
+  .online-row { flex-basis: 100%; display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 10px; padding-top: 14px; border-top: 1px solid rgba(243,210,122,0.3); }
+  .online-row input {
+    font: inherit; font-size: 14px; padding: 8px 10px; border-radius: 6px; width: 150px;
+    border: 1px solid var(--gold); background: rgba(243,228,189,0.1); color: var(--ink);
+  }
   details.rules { margin-top: 12px; font-size: 14px; color: var(--muted); line-height: 1.5; }
   details.rules summary { cursor: pointer; color: var(--gold-light); font-family: Cinzel, Georgia, serif; }
   @media (max-width: 420px) {
@@ -275,7 +280,7 @@ const isComplete = pyr => !!pyr[10];
 // ---------------------------------------------------------------- Game state
 let G = null;      // game state
 let T = null;      // current turn (pending actions)
-let mode = "ai";   // "ai" or "hotseat"
+let mode = "ai";   // "ai", "online" or "hotseat"
 const LEVELS = { easy: "Easy", medium: "Medium", hard: "Hard" };
 let difficulty = "medium";
 try { const d = localStorage.getItem("goPyramidDifficulty"); if (LEVELS[d]) difficulty = d; } catch (e) {}
@@ -300,7 +305,7 @@ function newGame(m, level) {
     current: 0,
     round: 1,
     over: false,
-    ai: { knownMiddle: null },
+    ai: { knownMiddle: null, oppStash: false },
   };
   document.getElementById("log").innerHTML = "";
   log(`Round 1 begins.`);
@@ -316,7 +321,7 @@ function startTurn() {
 }
 
 // Which player is shown at the bottom of the screen
-function viewer() { return mode === "ai" ? 0 : G.current; }
+function viewer() { return mode === "ai" ? 0 : mode === "online" ? NET.seat : G.current; }
 
 // ---------------------------------------------------------------- Turn actions
 function canAct() { return G && !G.over && !busy && T && G.current === viewer() && $("overlay").hidden; }
@@ -377,6 +382,11 @@ function describeMove(name, placed, discarded) {
 }
 
 function commitTurn() {
+  if (mode === "online") {
+    G.handLayout = T.hand.slice();
+    sendMove({ type: "play", placed: T.placed.map(c => c.id), discarded: T.discarded.map(c => c.id) });
+    return;
+  }
   const p = G.players[G.current];
   if (G.current === viewer()) G.handLayout = T.hand.slice(); // keep blanks visible until the deal
   p.hand = T.hand.filter(Boolean);
@@ -387,6 +397,7 @@ function commitTurn() {
 }
 
 function swapMiddle() {
+  if (mode === "online") { sendMove({ type: "swap" }); return; }
   const p = G.players[G.current];
   const old = p.hand;
   p.hand = sortHand(G.middle);
@@ -394,6 +405,7 @@ function swapMiddle() {
   log(`${p.name} swapped hand with the middle.`);
   // The AI only knows the middle if it put it there itself.
   G.ai.knownMiddle = G.current === 1 ? old.slice() : null;
+  G.ai.oppStash = G.current === 0;   // middle now holds the human's old hand
   afterMove();
 }
 
@@ -530,7 +542,7 @@ function chainBits(set, m) {
   for (let r = 1; r <= 10; r++) if ((set & rbit(r)) && canPlaceBits(r, m | placed)) placed |= rbit(r);
   return placed;
 }
-function hardFeatures(me, opp, known) {
+function hardFeatures(me, opp, known, oppStash) {
   const m = maskOf(me.pyr);
   const hs = rankSetOf(me.hand, m);
   const placed = chainBits(hs, m);
@@ -538,11 +550,11 @@ function hardFeatures(me, opp, known) {
   return {
     m, placed, rem: hs & ~placed,
     ob: oc <= 5 ? 0 : oc <= 8 ? 1 : 2,
-    mf: known ? 1 + popcount(chainBits(rankSetOf(known, m), m)) : 0,
+    mf: known ? 1 + popcount(chainBits(rankSetOf(known, m), m)) : oppStash ? 7 : 0,
   };
 }
-function hardKeys(me, opp, known) {
-  const f = hardFeatures(me, opp, known);
+function hardKeys(me, opp, known, oppStash) {
+  const f = hardFeatures(me, opp, known, oppStash);
   return {
     swap: ((((1 * 1024 + f.m) * 1024 + f.placed) * 8 + popcount(f.rem)) * 8 + f.mf) * 4 + f.ob,
     keep: ((1 * 1024 + (f.m | f.placed)) * 1024 + f.rem) * 4 + f.ob,
@@ -551,7 +563,7 @@ function hardKeys(me, opp, known) {
 }
 function hardDecide() {
   const me = G.players[1];
-  const k = hardKeys(me, G.players[0], G.ai.knownMiddle);
+  const k = hardKeys(me, G.players[0], G.ai.knownMiddle, G.ai.oppStash);
   const medium = mediumDecide();   // fallback for infosets not in the table
   const sa = HARD_SWAP.get(k.swap);
   const swap = sa === undefined ? medium === "swap" : sa === 0;
@@ -716,11 +728,11 @@ function render() {
 
   let status = "";
   if (G.over) status = "Game over.";
-  else if (busy) status = "Computer is thinking…";
+  else if (busy) status = mode === "online" ? "Sending…" : "Computer is thinking…";
   else if (myTurn) {
     status = acted ? "Tap more cards, or hit the dealer."
       : `Round ${G.round}. Tap a card: ☥ builds your pyramid, ✕ discards.`;
-  }
+  } else if (mode === "online") status = `Round ${G.round}. Waiting for ${NET.view.oppName}…`;
   $("status").textContent = status;
 }
 
@@ -742,9 +754,193 @@ function showOverlay(title, text, withModes) {
       if (lvl === "hard" && !hardAvailable) { b.disabled = true; b.title = "ai-hard-policy.js not found"; }
       o.append(b);
     }
-    if (G && G.over) { const c = el("button", "", "View board"); c.onclick = hideOverlay; o.append(c); }
+    if (G && G.over && mode !== "online") { const c = el("button", "", "View board"); c.onclick = hideOverlay; o.append(c); }
+    if (NET.available) {
+      const row = el("div", "online-row");
+      const input = el("input");
+      input.id = "nameInput";
+      input.placeholder = "Your name";
+      input.maxLength = 20;
+      try { input.value = localStorage.getItem("goPyramidName") || ""; } catch (e) {}
+      const b = el("button", "", "Play a friend online");
+      b.id = "onlineBtn";
+      b.onclick = goOnline;
+      row.append(input, b);
+      o.append(row);
+    }
   }
   $("overlay").hidden = false;
+}
+
+// ---------------------------------------------------------------- Online play (web/server.mjs)
+// The server owns the deck, the middle and both hands; we only ever receive our
+// own view, and send moves as card ids.
+const NET = { available: false, token: null, seat: 0, es: null, view: null, overShown: null, unloading: false };
+addEventListener("pagehide", () => { NET.unloading = true; });
+const tokenKey = () => "goPyramidToken:" + location.host;
+
+async function api(path, body) {
+  const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || r.statusText);
+  return j;
+}
+
+function message(title, text, buttons) {
+  $("ovTitle").textContent = title;
+  $("ovText").textContent = text;
+  const o = $("ovOpts"); o.innerHTML = "";
+  buttons.forEach(([label, fn, primary]) => { const b = el("button", primary ? "primary" : "", label); b.onclick = fn; o.append(b); });
+  $("overlay").hidden = false;
+}
+
+async function goOnline() {
+  let name = "", token = null;
+  try {
+    const input = $("nameInput");
+    if (input) { name = input.value.trim(); localStorage.setItem("goPyramidName", name); }
+    else name = localStorage.getItem("goPyramidName") || "";
+    token = localStorage.getItem(tokenKey());
+  } catch (e) {}
+  let j;
+  try { j = await api("/api/join", { token, name }); }
+  catch (e) {
+    message("Can't join", e.message, [["Play the computer", backToMenu, true]]);
+    return;
+  }
+  NET.token = j.token;
+  NET.seat = j.seat;
+  try { localStorage.setItem(tokenKey(), j.token); } catch (e) {}
+  mode = "online";
+  T = null;
+  G = null;
+  NET.overShown = null;
+  $("log").innerHTML = "";
+  hideOverlay();
+  connect();
+}
+
+function connect() {
+  if (NET.es) NET.es.close();
+  const es = new EventSource("/api/events?token=" + encodeURIComponent(NET.token));
+  NET.es = es;
+  es.onmessage = e => applyView(JSON.parse(e.data));
+  es.onerror = () => {
+    // A closed stream means the server refused us (e.g. it restarted): join
+    // again. The server gives a new seat if it doesn't know our token.
+    if (es.readyState === EventSource.CLOSED && mode === "online" && !NET.unloading) setTimeout(goOnline, 1500);
+  };
+}
+
+async function sendMove(move) {
+  busy = true;
+  render();
+  try { await api("/api/move", { token: NET.token, move }); }
+  catch (e) { busy = false; log("⚠ " + e.message); render(); }
+}
+
+function backToMenu() {
+  if (NET.es) NET.es.close();
+  NET.es = null;
+  mode = "ai";
+  G = null; T = null; busy = false;
+  showOverlay("Go Pyramid", "Build your pyramid from A up to 10 before your opponent does. Choose a difficulty:", true);
+}
+
+async function leaveOnline() {
+  try { await api("/api/leave", { token: NET.token }); } catch (e) {}
+  try { localStorage.removeItem(tokenKey()); } catch (e) {}
+  backToMenu();
+}
+
+async function rematch(force) {
+  try { await api("/api/new", { token: NET.token, force }); }
+  catch (e) { message("Not yet", e.message, [["OK", () => { hideOverlay(); render(); }, true]]); }
+}
+
+function onlineMenu() {
+  const v = NET.view;
+  const running = v && v.started && !v.over;
+  message("Online game", running ? "Start over? The current game will be abandoned." : "Play again with the same opponent?", [
+    [running ? "Start a new game" : "Play again", () => rematch(running), true],
+    ["Back to the board", () => { hideOverlay(); render(); }],
+    ["Leave and play the computer", leaveOnline],
+  ]);
+}
+
+// The link to send: the public tunnel link if there is one. "localhost" only
+// works on this computer, so never suggest it.
+async function showInvite(v) {
+  let info = {};
+  try { info = await (await fetch("/api/hello")).json(); } catch (e) {}
+  if (NET.view !== v) return;   // something newer arrived meanwhile
+  const local = /^(localhost|127\.|\[::1\])/.test(location.hostname);
+  const link = info.publicUrl || (!local ? location.origin + "/" : info.lanUrl);
+  let text = link ? `Send your friend this link: ${link} — they open it and click "Play a friend online".` : "";
+  if (!info.publicUrl && local) {
+    text += (link ? " That link only works on your Wi-Fi. " : "") +
+      (info.tunnel ? "The public link is still starting; this updates in a moment."
+        : "For a friend anywhere, restart the server with: node web/server.mjs --tunnel");
+    if (info.tunnel) setTimeout(() => { if (NET.view === v) showInvite(v); }, 3000);
+  }
+  const buttons = [];
+  if (link) buttons.push(["Copy link", () => { navigator.clipboard && navigator.clipboard.writeText(link); }, true]);
+  buttons.push(["Leave and play the computer", leaveOnline]);
+  message(v.oppJoined ? "Starting…" : "Waiting for your opponent", text, buttons);
+}
+
+function applyView(v) {
+  NET.view = v;
+  if (!v.started) {
+    G = null; T = null;
+    showInvite(v);
+    return;
+  }
+  const me = v.seat, opp = 1 - me;
+  const toPyr = list => Object.fromEntries(list.map(c => [c.rank, c]));
+  const prev = G;
+  const sameRound = prev && prev.game === v.game && prev.round === v.round;
+  G = {
+    turnId: v.turnId, game: v.game,
+    deck: { length: v.deckCount },
+    middle: new Array(v.middleCount).fill(0),
+    discard: v.discardTop ? new Array(v.discardCount).fill(v.discardTop) : [],
+    players: [],
+    current: v.current, round: v.round, over: v.over,
+    ai: { knownMiddle: null },
+    handLayout: sameRound ? prev.handLayout : null,
+  };
+  G.players[me] = { name: v.you || "You", hand: v.hand, pyr: toPyr(v.pyr[me]) };
+  G.players[opp] = {
+    name: v.oppName + (v.oppOnline ? "" : " (offline)"),
+    hand: v.over ? v.oppHand : new Array(v.oppHandCount).fill(0),
+    pyr: toPyr(v.pyr[opp]),
+  };
+  busy = false;
+  if (v.current === me && !v.over) {
+    if (!T || !prev || prev.turnId !== v.turnId) startTurn();
+  } else T = null;
+
+  const l = $("log"); l.innerHTML = "";
+  v.log.forEach(m => l.append(el("div", "", m)));
+  l.scrollTop = l.scrollHeight;
+
+  if (v.over && NET.overShown !== v.game) {
+    NET.overShown = v.game;
+    const title = v.result === "win" ? "You win!" : v.result === "draw" ? "It's a draw!" : `${v.oppName} wins.`;
+    render();
+    message(title, `Finished in ${v.round} rounds.`, [
+      ["Play again", () => rematch(false), true],
+      ["View board", () => { hideOverlay(); render(); }],
+      ["Leave and play the computer", leaveOnline],
+    ]);
+    return;
+  }
+  if (!v.over) {
+    const t = $("ovTitle").textContent;
+    if (!$("overlay").hidden && (t.startsWith("Waiting") || t.startsWith("Starting") || /wins|win!|draw/.test(t))) hideOverlay();
+  }
+  render();
 }
 function hideOverlay() { $("overlay").hidden = true; }
 function passScreen(p) {
@@ -764,7 +960,11 @@ $("endBtn").onclick = () => { if (canAct()) commitTurn(); };
 document.addEventListener("keydown", e => {
   if (e.metaKey || e.ctrlKey || e.altKey) return;
   if (!$("overlay").hidden) {
-    if (e.key === "Enter") { const b = $("ovOpts").querySelector("button.primary") || $("ovOpts").querySelector("button"); if (b) { e.preventDefault(); b.click(); } }
+    if (e.key === "Enter") {
+      const b = e.target.id === "nameInput" ? $("onlineBtn")
+        : $("ovOpts").querySelector("button.primary") || $("ovOpts").querySelector("button");
+      if (b) { e.preventDefault(); b.click(); }
+    }
     return;
   }
   if (e.key >= "1" && e.key <= "5") tapCard(Number(e.key) - 1);
@@ -772,9 +972,21 @@ document.addEventListener("keydown", e => {
   else if (e.key === "z" || e.key === "Z" || e.key === "Backspace") { e.preventDefault(); undoLast(); }
   else if (e.key === "s" || e.key === "S") $("swapBtn").click();
 });
-$("newGameBtn").onclick = () => showOverlay("New game", "Choose the computer's difficulty.", true);
+$("newGameBtn").onclick = () => mode === "online" ? onlineMenu() : showOverlay("New game", "Choose the computer's difficulty.", true);
 
 showOverlay("Go Pyramid", "Build your pyramid from A up to 10 before the computer does. Choose a difficulty:", true);
+
+// Served by web/server.mjs? Then offer online play (and rejoin after a refresh).
+if (location.protocol.startsWith("http")) {
+  fetch("/api/hello").then(r => r.ok ? r.json() : null).then(j => {
+    if (!j || j.game !== "go-pyramid") return;
+    NET.available = true;
+    let token = null;
+    try { token = localStorage.getItem(tokenKey()); } catch (e) {}
+    if (token) goOnline();
+    else showOverlay("Go Pyramid", "Play the computer, or a friend online.", true);
+  }).catch(() => {});
+}
 </script>
 </body>
 </html>

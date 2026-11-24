@@ -52,11 +52,13 @@ export function oppBucket(m) {
   return c <= 5 ? 0 : c <= 8 ? 1 : 2;
 }
 
-// What this player knows about the middle: 0 = unknown, otherwise 1 + how many
-// of its cards it could place right away.
-export function midFeature(known, m) {
-  if (!known) return 0;
-  return 1 + popcount(chain(rankSet(known, m), m));
+// What this player knows about the middle:
+//   0     = unknown, still the original five cards from the deal
+//   7     = unknown, the hand the opponent just swapped away
+//   1..6  = known (I left it there): 1 + how many of its cards I could place now
+export function midFeature(me) {
+  if (me.known) return 1 + popcount(chain(rankSet(me.known, me.mask), me.mask));
+  return me.oppStash ? 7 : 0;
 }
 
 // Each turn is two decisions, each with its own infoset.
@@ -67,7 +69,7 @@ export function swapKey(seat, me, opp) {
   const hs = rankSet(me.hand, me.mask);
   const placed = chain(hs, me.mask);
   const nRem = popcount(hs & ~placed);
-  return ((((seat * 1024 + me.mask) * 1024 + placed) * 8 + nRem) * 8 + midFeature(me.known, me.mask)) * 4 + oppBucket(opp.mask);
+  return ((((seat * 1024 + me.mask) * 1024 + placed) * 8 + nRem) * 8 + midFeature(me)) * 4 + oppBucket(opp.mask);
 }
 
 // 2. Which cards that can't be placed yet to keep.  Key: seat, pyramid after
@@ -136,7 +138,7 @@ export function newGame(rng) {
   for (let i = 0; i < 5; i++) { h0.push(deck[dp++]); h1.push(deck[dp++]); }
   return {
     deck, dp, discard: [], middle,
-    p: [{ mask: 0, hand: h0, known: null }, { mask: 0, hand: h1, known: null }],
+    p: [{ mask: 0, hand: h0, known: null, oppStash: false }, { mask: 0, hand: h1, known: null, oppStash: false }],
     toMove: 0, round: 1, result: null, rng,
   };
 }
@@ -144,7 +146,7 @@ export function newGame(rng) {
 export function clone(st, rng) {
   return {
     deck: st.deck, dp: st.dp, discard: st.discard.slice(), middle: st.middle.slice(),
-    p: st.p.map(q => ({ mask: q.mask, hand: q.hand.slice(), known: q.known })),
+    p: st.p.map(q => ({ mask: q.mask, hand: q.hand.slice(), known: q.known, oppStash: q.oppStash })),
     toMove: st.toMove, round: st.round, result: st.result, rng: rng || st.rng,
   };
 }
@@ -168,7 +170,9 @@ export function apply(st, a) {
     me.hand = st.middle;
     st.middle = old;
     me.known = old;     // I know exactly what I left in the middle
-    op.known = null;    // the opponent's knowledge is now stale
+    me.oppStash = false;
+    op.known = null;    // the opponent only knows it's my old hand
+    op.oppStash = true;
   } else {
     const hs = rankSet(me.hand, me.mask);
     const placed = chain(hs, me.mask);

@@ -27,6 +27,7 @@ while (cases.length < 20000) {
         rem: undecided(me),
         players: [{ hand: toCards(st.p[0].hand), pyr: pyr(st.p[0].mask) }, { hand: toCards(sorted), pyr: pyr(me.mask) }],
         known: me.known ? toCards(me.known.slice().sort((a, b) => a - b)) : null,
+        oppStash: me.oppStash,
       });
     }
     const n = numActions(st.p[st.toMove]);
@@ -41,7 +42,7 @@ const res = await pg.evaluate(cs => {
   let bad = 0, deviations = 0;
   const examples = [];
   for (const c of cs) {
-    G = { players: c.players, ai: { knownMiddle: c.known } };
+    G = { players: c.players, ai: { knownMiddle: c.known, oppStash: c.oppStash } };
     const d = hardDecide();
     let got;
     if (d === 'swap') got = 0;
@@ -53,7 +54,7 @@ const res = await pg.evaluate(cs => {
       got = 1 + k;
     }
     if (got !== c.expect) { bad++; if (examples.length < 3) examples.push({ got, expect: c.expect }); }
-    G = { players: c.players, ai: { knownMiddle: c.known } };
+    G = { players: c.players, ai: { knownMiddle: c.known, oppStash: c.oppStash } };
     const md = mediumDecide();
     if ((md === 'swap') !== (got === 0) || (md !== 'swap' && got !== 0 && JSON.stringify(md) !== JSON.stringify(d))) deviations++;
   }
